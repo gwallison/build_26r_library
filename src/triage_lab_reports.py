@@ -7,6 +7,7 @@ Uses keyword and regex scoring based on units, chemical names, and lab headers.
 
 Output:
     data/output/lab_report_triage.parquet
+    data/output/lab_report_triage.html
 """
 
 import os
@@ -14,12 +15,24 @@ import re
 import pandas as pd
 import numpy as np
 
+import itables
+from itables import init_notebook_mode
+init_notebook_mode(all_interactive=True)
+import itables.options as opt
+opt.classes="display compact cell-border"
+opt.buttons=['pageLength', "copyHtml5", "csvHtml5", ]
+opt.maxBytes = 0
+opt.allow_html = True
+opt.lengthMenu=[2, 5, 10, 50,100]
+opt.pageLength=10
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CORPUS_PATH = os.path.join(PROJECT_ROOT, 'data', 'corpus', 'pdf_corpus.parquet')
 OUTPUT_PATH = os.path.join(PROJECT_ROOT, 'data', 'output', 'lab_report_triage.parquet')
+HTML_OUTPUT_PATH = os.path.join(PROJECT_ROOT, 'data', 'output', 'lab_report_triage.html')
 
 # ---------------------------------------------------------------------------
 # Heuristic Patterns
@@ -88,6 +101,78 @@ def calculate_triage_score(text):
 
     return score, matches
 
+
+# ---------------------------------------------------------------------------
+# HTML generation
+# ---------------------------------------------------------------------------
+
+table_styling = """<style>
+  body {
+    font-family: "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell,
+                 "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+    font-size: 16px;
+    color: rgb(9, 66, 100);
+  }
+  table, th, td {
+    border-color: rgb(214, 239, 238);
+  }
+  th {
+    font-weight: 400;
+  }
+</style>"""
+
+
+def get_link(row):
+    rooturl = "https://storage.googleapis.com/fta-form26r-library/full-set/"
+    fn = row.filename.replace(' ', '%20')
+    pn = f'#page={row.page_number}'
+    url = f"""<a href={rooturl}{row.set_name}/{fn}{pn} target="_blank">Open PDF</a>"""
+    return url
+
+
+def make_triage_html(parquet_path, html_path):
+    """Reads the triage parquet and writes an interactive HTML table."""
+    init_notebook_mode(all_interactive=True, connected=True)
+
+    if not os.path.exists(parquet_path):
+        print(f"Error: Parquet file not found: {parquet_path}")
+        return
+
+    df = pd.read_parquet(parquet_path)
+    print(f"Loaded {len(df)} rows from {parquet_path}")
+
+    df['pdf_link'] = df.apply(lambda row: get_link(row), axis=1)
+    
+    # We'll take a subset if it's too large, but itables can handle a lot.
+    # Let's show all flagged but maybe limited to top 10k for performance?
+    # User asked for top 50% export but for HTML maybe show a manageable amount.
+    # Actually, let's just use the whole flagged set since itables is efficient.
+    
+    html = itables.to_html_datatable(
+        df[['pdf_link', 'triage_score', 'matched_terms', 'filename', 'page_number', 'set_name', 'text_snippet']].reset_index(drop=True),
+        connected=True,
+        pageLength=10,
+        display_logo_when_loading=False,
+        lengthMenu=[2, 5, 10, 50, 100],
+        buttons=['pageLength', 'copyHtml5', 'csvHtml5'],
+        columnControl=["order", ["orderAsc", "orderDesc", "search"]]
+    )
+
+    title = """
+    <div class="title-container">
+    <h2>Lab Report Triage Results</h2>
+    <h3>Heuristic scoring for high-probability Lab Report pages.</h3>
+    </div>
+"""
+
+    os.makedirs(os.path.dirname(html_path), exist_ok=True)
+    with open(html_path, 'w', encoding='utf-8') as f:
+        f.write(f"<html><head>{table_styling}</head><body>")
+        f.write(title + html)
+        f.write("</body></html>")
+    print(f"HTML written to {html_path}")
+
+
 def run_triage():
     if not os.path.exists(CORPUS_PATH):
         print(f"Error: Corpus not found at {CORPUS_PATH}")
@@ -104,18 +189,13 @@ def run_triage():
     df['triage_score'] = [r[0] for r in results]
     df['matched_terms'] = [", ".join(r[1]) for r in results]
 
-    # Filter to pages that have at least some signal
-    # A score of 5 is a reasonable threshold for "likely a lab report" 
-    # (e.g., one structural keyword + one unit, or one analyte + one unit)
+    # Filter to pages that have at least some signal (score >= 5)
     triage_df = df[df['triage_score'] >= 5].copy()
     
     # Sort by score descending
     triage_df = triage_df.sort_values(by=['triage_score'], ascending=False)
 
-    # Drop the full text to keep the output file small, but keep a snippet if needed
-    # Actually, the user might want to see the text in the triage results, 
-    # but for a parquet index, we usually don't need the full text.
-    # Let's keep a snippet (first 200 chars) for quick inspection.
+    # Snippet for HTML/Inspection
     triage_df['text_snippet'] = triage_df['text'].str.slice(0, 200).str.replace('\n', ' ')
     
     # Select columns for final output
@@ -129,6 +209,9 @@ def run_triage():
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     triage_df[output_cols].to_parquet(OUTPUT_PATH, index=False)
     print(f"Results written to {OUTPUT_PATH}")
+
+    # Generate HTML
+    make_triage_html(OUTPUT_PATH, HTML_OUTPUT_PATH)
 
 if __name__ == "__main__":
     run_triage()
