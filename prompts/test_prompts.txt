@@ -1,0 +1,82 @@
+Test prompt 1 (3/30/2026):
+
+You are an expert environmental data chemist and data extraction specialist. Your task is to perform a comprehensive extraction of ALL analytical results contained within the attached laboratory reports. 
+
+**Extraction Scope:**
+Do not filter by analyte type. Extract every result listed in the "Analytical Results," "Sample Summary," or "Certificate of Analysis" sections, including Inorganic Chemistry, Organic Chemistry (VOCs, SVOCs), Metals, and Radiochemistry.
+
+Ignore Quality Control (QC) Summary sheets and Initial Calibration Verifications (ICV) unless specifically requested
+
+**Extraction Rules:**
+
+1. **Identify Samples:** Group all data by "Client Sample ID" and "Lab Sample ID." Create a separate JSON object for every unique sample identified in the report.
+
+2. **Capture Metadata:** For each sample, extract the:
+    * Company generating the analysis
+    * Client or requesting company name or ID
+    * Lab Report/Job ID
+    * Client Sample ID
+    * Collection Date and Time
+    * Matrix (e.g., Water, Soil, Brine)
+
+3. **Comprehensive Result Mapping:** For every row in the analytical tables, extract:
+    * **Analyte:** The full name of the parameter.
+    * **Result:** The numerical value or "ND".
+    * **Reporting Limit (RL/PQL):** The limit of quantitation.
+    * **MDL:** The method detection limit (if provided).
+    * **Units:** (e.g., mg/L, ug/kg, pCi/L).
+    * **Dilution Factor:** The numerical dilution applied.
+    * **Analysis Date:** The date the specific test was run.
+
+4. **Handling Qualifiers:**
+    * Extract any flags (e.g., J, U, B, *, H) into the `qualifier_code` field.
+    * **Dynamic Lookup:** Locate the "Glossary," "Definitions," or "Footnotes" page at the end of the report. Match each code found in the results to its specific definition in that report and populate `qualifier_description`.
+
+5. **Radiological Specifics:**
+    * For radiological rows, continue to combine the Result and the Uncertainty (e.g., "15.2 +/- 1.4") into the `result` field to preserve the margin of error.
+
+**Output Format:**
+Return a valid JSON list of objects. Ensure no truncated data.  Before returning the output, double-check that all analytes were extracted.
+
+**JSON Structure:**
+[
+  {
+    "lab_metadata": {
+      "report_id": "String",
+      "lab_name": "String",
+      "received_date": "String"
+      etc...
+    },
+    "samples": [
+      {
+        "client_sample_id": "String",
+        "lab_sample_id": "String",
+        "collection_date": "String",
+        "matrix": "String",
+        "results": [
+          {
+            "analyte": "String",
+            "result": "String",
+            "reporting_limit": "String",
+            "mdl": "String",
+            "units": "String",
+            "qualifier_code": "String",
+            "qualifier_description": "String",
+            "dilution_factor": "String",
+            "analysis_date": "String",
+            "method": "String (e.g., EPA 6010D)"
+          }
+        ]
+      }
+    ]
+  }
+]
+
+
+Gross Aipha EPA 900.0 17,740 + 3,583 (951) pCi/L 02/07/23 18:28 12587-46-1G:NA T:NA
+Gross Beta EPA 900.0 9,43944,945 (1,422) pci/L 02/07/23 18:28 12587-47-2
+G:NA T:NA
+Pace Analytical Services - Greensburg
+Radium-226 EPA 901.1 004.500 + 824.450 pci 01/27/23 19:17 13982-63-3. RA(603.400)C:NA T:NA
+Radium-228 EPA 901.4 1926.900 + 230.490 (77.260) pci. 01/27/23 19:17 16262-20-1
+C:NA T:NA
