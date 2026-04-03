@@ -20,7 +20,7 @@ from get_single_file_prompt import SYSTEM_PROMPT
 API_KEY = os.getenv("GoogleAI-API-key")
 # Use gemini-3-flash-preview as requested
 MODEL_NAME = "gemini-3-flash-preview" 
-CACHE_TTL_MINUTES = 60
+CACHE_TTL_MINUTES = 1440
 
 if not API_KEY:
     print("Error: Environment variable 'GoogleAI-API-key' not set.")
