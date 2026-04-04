@@ -77,14 +77,15 @@ def harvest_results():
 
     # The output file name is usually in job.dest or check metadata
     # For Google AI (non-Vertex), the output is often a file name like "files/..."
-    output_file_name = job.dest
-    if not output_file_name:
+    if not job.dest or not job.dest.file_name:
         print("Error: No output destination found in job record.")
         return
+    
+    output_file_name = job.dest.file_name
 
     print(f"Downloading results from: {output_file_name}")
     try:
-        content_bytes = client.files.download(name=output_file_name)
+        content_bytes = client.files.download(file=output_file_name)
         # JSONL content
         lines = content_bytes.decode('utf-8').splitlines()
     except Exception as e:
@@ -98,6 +99,8 @@ def harvest_results():
     all_qualifiers = []
 
     print(f"Parsing {len(lines)} result lines...")
+    if lines:
+        print(f"DEBUG: First line content: {lines[0][:500]}")
     for i, line in enumerate(lines):
         try:
             data = json.loads(line)

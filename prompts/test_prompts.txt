@@ -72,11 +72,3 @@ Return a valid JSON list of objects. Ensure no truncated data.  Before returning
   }
 ]
 
-
-Gross Aipha EPA 900.0 17,740 + 3,583 (951) pCi/L 02/07/23 18:28 12587-46-1G:NA T:NA
-Gross Beta EPA 900.0 9,43944,945 (1,422) pci/L 02/07/23 18:28 12587-47-2
-G:NA T:NA
-Pace Analytical Services - Greensburg
-Radium-226 EPA 901.1 004.500 + 824.450 pci 01/27/23 19:17 13982-63-3. RA(603.400)C:NA T:NA
-Radium-228 EPA 901.4 1926.900 + 230.490 (77.260) pci. 01/27/23 19:17 16262-20-1
-C:NA T:NA

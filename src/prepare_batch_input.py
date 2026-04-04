@@ -14,11 +14,15 @@ from get_single_file_prompt import get_file_prompt
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-GCS_ROOT = "gs://fta-form26r-library/full-set/"
+PDF_ROOT = r"D:\PA_Form26r_PDFs\all_pdfs"
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRIAGE_PATH = os.path.join(PROJECT_ROOT, 'data', 'output', 'lab_report_triage.parquet')
 F26R_PATH = os.path.join(PROJECT_ROOT, 'data', 'output', 'all_harvested_form26r.parquet')
 OUTPUT_JSONL = os.path.join(PROJECT_ROOT, 'data', 'batch_input_100.jsonl')
+API_KEY = os.getenv("GoogleAI-API-key")
+
+from google import genai
+client = genai.Client(api_key=API_KEY)
 
 def prepare_batch():
     print("Loading metadata...")
@@ -35,8 +39,12 @@ def prepare_batch():
     # Take first 100
     batch_files = merged.head(100)
     
+    # Pre-check existing files in File API to avoid re-uploading
+    print("Checking existing files in File API...")
+    existing_files = {f.display_name: f.name for f in client.files.list()}
+    
     requests = []
-    print(f"Generating prompts for 100 files...")
+    print(f"Uploading/Mapping 100 files...")
     
     for idx, row in batch_files.iterrows():
         set_name = row['set_name']
@@ -45,30 +53,37 @@ def prepare_batch():
         # Get the specific prompt for this file
         prompt = get_file_prompt(set_name, filename)
         
-        # Construct GCS URI
-        # Note: GCS paths are case-sensitive and should match the structure
-        gcs_uri = f"{GCS_ROOT}{set_name}/{filename}".replace(" ", "%20")
-        # Wait, the user's example: 
-        # https://storage.googleapis.com/fta-form26r-library/full-set/2010-2018/000044_BondiA_311_26R.pdf
-        # Usually GCS URIs in gs:// format don't use %20, they use literal spaces if the tool supports it, 
-        # but the Batch API might prefer literal or quoted. 
-        # Actually, standard gsutil/gcloud supports spaces. 
-        # The JSONL spec usually wants the URI as a string.
-        gcs_uri = f"{GCS_ROOT}{set_name}/{filename}"
-        
-        # Create the request object with cachedContent
-        # Format for Batch API with Cache:
-        # {"request": {"contents": [...], "cachedContent": "cachedContents/..."}}
+        # Check if already uploaded
+        display_name = f"batch_{set_name}_{filename}".replace(" ", "_")
+        if display_name in existing_files:
+            file_name = existing_files[display_name]
+        else:
+            file_path = os.path.join(PDF_ROOT, set_name, filename)
+            if not os.path.exists(file_path):
+                print(f"  Warning: File not found: {file_path}")
+                continue
+            
+            # Upload
+            uploaded_file = client.files.upload(
+                file=file_path,
+                config={'display_name': display_name}
+            )
+            file_name = uploaded_file.name
+            existing_files[display_name] = file_name
+            
+        # Create the request object (Google AI Batch API schema)
         request_obj = {
+            "id": filename.replace(".pdf", ""),
             "request": {
                 "contents": [
                     {
+                        "role": "user",
                         "parts": [
                             {"text": prompt},
                             {
                                 "fileData": {
                                     "mimeType": "application/pdf",
-                                    "fileUri": gcs_uri
+                                    "fileUri": f"https://generativelanguage.googleapis.com/v1beta/{file_name}"
                                 }
                             }
                         ]
@@ -79,9 +94,7 @@ def prepare_batch():
         }
         requests.append(request_obj)
         
-        if (idx + 1) % 10 != 0:
-            pass # Keep it quiet
-        else:
+        if (idx + 1) % 10 == 0:
             print(f"  Processed {idx + 1}/100...")
 
     print(f"Writing {len(requests)} requests to {OUTPUT_JSONL}...")

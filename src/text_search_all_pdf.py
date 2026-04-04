@@ -26,8 +26,10 @@ DIRSET = ['2010-2018', '2019-2020', '2021-2022',
           '2023_all_months', '2024_all_months',
           'Jan_Jun_2025', 'Jul_Dec_2025']
 ROOTURL = "https://storage.googleapis.com/fta-form26r-library/full-set/"
-TMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tmp')
-CORPUS_PATH = os.path.join(TMP_DIR, 'pdf_corpus.parquet')
+DATA_DIR = r"C:\MyDocs\sandbox\build_26R_library\data\corpus"
+# TMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'corpus')
+CORPUS_PATH = os.path.join(DATA_DIR, 'pdf_corpus.parquet')
+print(CORPUS_PATH)
 
 table_styling = """<style>
   body {
@@ -52,6 +54,7 @@ table_styling = """<style>
 def search_corpus(corpus_path: str, search_text: str) -> list:
     """Search the pre-built page corpus. Returns same match-record format as search_all_pdfs."""
     df = pd.read_parquet(corpus_path)
+    print('corpus fetched')
     mask = df['text'].str.contains(search_text, case=False, na=False, regex=False)
     hits = df[mask]
 
@@ -167,7 +170,7 @@ def build_html(matches: list, search_text: str, output_dir: str) -> str:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    search_text = sys.argv[1] if len(sys.argv) > 1 else "geochemical testing"
+    search_text = sys.argv[1] if len(sys.argv) > 1 else "testamerica"
 
     print(f'Searching for: "{search_text}"')
 
@@ -179,9 +182,9 @@ if __name__ == "__main__":
         print("Tip: run  python build_pdf_corpus.py  once to enable fast searches.")
         print(f"Falling back to direct PDF search of: {ROOT}")
         print()
-        matches = search_all_pdfs(ROOT, DIRSET, search_text)
-
+        # matches = search_all_pdfs(ROOT, DIRSET, search_text)
+        matches = None
     print(f"\n{len(matches)} file(s) matched.")
     if matches:
-        out = build_html(matches, search_text, TMP_DIR)
+        out = build_html(matches, search_text, DATA_DIR)
         print(f"Results written to: {out}")
