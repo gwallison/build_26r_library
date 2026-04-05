@@ -42,10 +42,14 @@ def harvest_results():
 
     parts = dest_uri.replace("gs://", "").split("/")
     bucket_name = parts[0]
-    prefix = "/".join(parts[1:]) + "/"
+    prefix = "/".join(parts[1:])
+    if prefix and not prefix.endswith("/"):
+        prefix += "/"
 
     storage_client = storage.Client(project=PROJECT_ID)
     bucket = storage_client.bucket(bucket_name)
+    
+    # List objects with the prefix to find the timestamped subfolder
     blobs = list(storage_client.list_blobs(bucket, prefix=prefix))
     jsonl_blobs = [b for b in blobs if "predictions.jsonl" in b.name]
 

@@ -157,7 +157,7 @@ def prepare_batch():
     print("Building training turns...")
     training_turns = get_training_examples()
 
-    # Get a clean schema for Vertex (stripping $defs and $ref which can break the importer)
+    # Get a clean schema for Vertex with strict descriptions to compel correct behavior
     response_schema = {
         "type": "object",
         "properties": {
@@ -166,20 +166,20 @@ def prepare_batch():
                 "items": {
                     "type": "object",
                     "properties": {
-                        "lab_report_id": {"type": "string"},
-                        "lab_name": {"type": "string"},
-                        "client_name": {"type": "string"},
-                        "received_date": {"type": "string"},
-                        "client_sample_id": {"type": "string"},
-                        "lab_sample_id": {"type": "string"},
-                        "collection_date": {"type": "string"},
-                        "matrix": {"type": "string"},
-                        "sample_notes": {"type": "string"},
-                        "extraction_notes": {"type": "string"},
-                        "f26r_company_name": {"type": "string"},
-                        "f26r_waste_location": {"type": "string"},
-                        "f26r_waste_code": {"type": "string"},
-                        "f26r_date_prepared": {"type": "string"}
+                        "lab_report_id": {"type": "string", "description": "Main lab report ID"},
+                        "lab_name": {"type": "string", "description": "Laboratory name"},
+                        "client_name": {"type": "string", "description": "Client name"},
+                        "received_date": {"type": "string", "description": "Date received"},
+                        "client_sample_id": {"type": "string", "description": "Client sample identifier"},
+                        "lab_sample_id": {"type": "string", "description": "Lab unique sample identifier"},
+                        "collection_date": {"type": "string", "description": "Date sample was collected"},
+                        "matrix": {"type": "string", "description": "Matrix (Water, Solid, etc.)"},
+                        "sample_notes": {"type": "string", "description": "General sample notes"},
+                        "extraction_notes": {"type": "string", "description": "Extraction difficulty notes"},
+                        "f26r_company_name": {"type": "string", "description": "Form 26R company name"},
+                        "f26r_waste_location": {"type": "string", "description": "Form 26R waste location"},
+                        "f26r_waste_code": {"type": "string", "description": "Form 26R waste code"},
+                        "f26r_date_prepared": {"type": "string", "description": "Form 26R date prepared"}
                     }
                 }
             },
@@ -188,17 +188,17 @@ def prepare_batch():
                 "items": {
                     "type": "object",
                     "properties": {
-                        "lab_sample_id": {"type": "string"},
-                        "analyte": {"type": "string"},
-                        "result": {"type": "string"},
-                        "reporting_limit": {"type": "string"},
-                        "mdl": {"type": "string"},
-                        "units": {"type": "string"},
-                        "qualifier_code": {"type": "string"},
-                        "dilution_factor": {"type": "string"},
-                        "analysis_date": {"type": "string"},
-                        "method": {"type": "string"},
-                        "pdf_page_number": {"type": "string"}
+                        "lab_sample_id": {"type": "string", "description": "Must match lab_sample_id in SAMPLES"},
+                        "analyte": {"type": "string", "description": "Chemical name only"},
+                        "result": {"type": "string", "description": "Numerical value ONLY. No qualifiers, no units, no text."},
+                        "reporting_limit": {"type": "string", "description": "Numerical RL value only."},
+                        "mdl": {"type": "string", "description": "Numerical MDL value only."},
+                        "units": {"type": "string", "description": "Unit only (e.g. ug/L). NO metadata or other text."},
+                        "qualifier_code": {"type": "string", "description": "Flag only (U, J, etc.)"},
+                        "dilution_factor": {"type": "string", "description": "Numerical dilution factor only"},
+                        "analysis_date": {"type": "string", "description": "Analysis date"},
+                        "method": {"type": "string", "description": "Method code (e.g. EPA 6010)"},
+                        "pdf_page_number": {"type": "string", "description": "Page number in PDF"}
                     },
                     "required": ["lab_sample_id", "analyte"]
                 }

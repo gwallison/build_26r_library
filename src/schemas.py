@@ -20,16 +20,16 @@ class Sample(BaseModel):
 
 class Result(BaseModel):
     lab_sample_id: str = Field(..., description="Must match the lab_sample_id from the SAMPLES list")
-    analyte: str = Field(..., description="The name of the chemical or parameter analyzed")
-    result: Optional[str] = Field(None, description="The numerical or qualitative result value")
-    reporting_limit: Optional[str] = Field(None, description="The laboratory reporting limit (RL)")
-    mdl: Optional[str] = Field(None, description="Method Detection Limit (MDL)")
-    units: Optional[str] = Field(None, description="Measurement units (e.g., ug/L, mg/kg, pCi/L)")
-    qualifier_code: Optional[str] = Field(None, description="Data qualifier flags (e.g., U, J, *)")
-    dilution_factor: Optional[str] = Field(None, description="The dilution factor applied to the sample")
-    analysis_date: Optional[str] = Field(None, description="Date and time the analysis was performed")
-    method: Optional[str] = Field(None, description="The analytical method used (e.g., EPA 6010D)")
-    pdf_page_number: Optional[str] = Field(None, description="The page number in the PDF where this result was found")
+    analyte: str = Field(..., description="The name of the chemical or parameter analyzed. Do not include units or methods here.")
+    result: Optional[str] = Field(None, description="The numerical result value only. Do NOT include qualifiers like 'U' or 'J' here. Do NOT include units.")
+    reporting_limit: Optional[str] = Field(None, description="The numerical reporting limit (RL) only. No text.")
+    mdl: Optional[str] = Field(None, description="Method Detection Limit (MDL) numeric value only.")
+    units: Optional[str] = Field(None, description="Measurement units only (e.g., 'ug/L', 'mg/kg'). Do NOT include RL, MDL, or other metadata here.")
+    qualifier_code: Optional[str] = Field(None, description="Data qualifier flags only (e.g., 'U', 'J').")
+    dilution_factor: Optional[str] = Field(None, description="Numerical dilution factor only.")
+    analysis_date: Optional[str] = Field(None, description="Date of analysis.")
+    method: Optional[str] = Field(None, description="Analytical method code (e.g., 'EPA 6010D').")
+    pdf_page_number: Optional[str] = Field(None, description="Page number in PDF.")
 
 class Qualifier(BaseModel):
     qualifier_code: str = Field(..., description="The code/flag used in the results table")
