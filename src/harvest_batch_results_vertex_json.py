@@ -70,6 +70,13 @@ def harvest_results():
         print(f"Processing {blob.name}...")
         content = blob.download_as_text()
         
+        # Save raw JSONL for inspection
+        raw_filename = blob.name.replace("/", "_").replace(":", "_")
+        raw_path = os.path.join(OUTPUT_DIR, raw_filename)
+        with open(raw_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        print(f"  Saved raw output to: {raw_path}")
+        
         for line in content.splitlines():
             try:
                 data = json.loads(line)
