@@ -15,17 +15,6 @@ import re
 import pandas as pd
 import numpy as np
 
-import itables
-from itables import init_notebook_mode
-init_notebook_mode(all_interactive=True)
-import itables.options as opt
-opt.classes="display compact cell-border"
-opt.buttons=['pageLength', "copyHtml5", "csvHtml5", ]
-opt.maxBytes = 0
-opt.allow_html = True
-opt.lengthMenu=[2, 5, 10, 50,100]
-opt.pageLength=10
-
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
@@ -39,13 +28,15 @@ HTML_OUTPUT_PATH = os.path.join(PROJECT_ROOT, 'data', 'output', 'lab_report_tria
 # ---------------------------------------------------------------------------
 
 # Units (OCR resilient)
-RE_UNITS = re.compile(r'\b(mg/[LI1l]|ug/[LI1l]|pCi/[LI1l]|mg/kg|ug/kg|Deg\.?\s*F)\b', re.I)
+RE_UNITS = re.compile(r'\b(mg/[LI1l]|ug/[LI1l]|pCi/[LI1l]|mg/kg|ug/kg|Deg\.?\s*F|% Solids|wt%)\b', re.I)
 
-# Structural Keywords
+# Structural Keywords (Expanded)
 RE_STRUCTURAL = re.compile(
     r'\b(Analyte|Parameter|Surrogate|Reporting\s+Limit|Detection\s+Limit|Method\s+Blank|'
     r'Matrix\s+Spike|LCS\s+Recovery|Batch\s+ID|QC\s+Result|Certificate\s+of\s+Analysis|'
-    r'Analytical\s+Report|Case\s+Narrative|Chain\s+of\s+Custody|NELAP\s+Cert)\b', 
+    r'Analytical\s+Report|Case\s+Narrative|Chain\s+of\s+Custody|NELAP\s+Cert|'
+    r'Sample\s+ID|Lab\s+Sample\s+ID|Client\s+Sample\s+ID|Project\s+Name|Job\s+ID|'
+    r'Method\s+Reference|Work\s+Order|SDG|Data\s+Package|Collected:|Received:)\b', 
     re.I
 )
 
@@ -53,14 +44,17 @@ RE_STRUCTURAL = re.compile(
 RE_ANALYTES = re.compile(
     r'\b(Methanol|Chloride|Barium|Arsenic|Selenium|Radium-?226|Radium-?228|Benzene|'
     r'Toluene|Ethylbenzene|Xylenes?|Gross\s+Alpha|Gross\s+Beta|Flashpoint|Ignitability|'
-    r'Specific\s+Conductance|Total\s+Dissolved\s+Solids|TDS|TSS)\b', 
+    r'Specific\s+Conductance|Total\s+Dissolved\s+Solids|TDS|TSS|Oil\s+and\s+Grease|'
+    r'Total\s+Suspended\s+Solids|Specific\s+Gravity|pH|Conductivity|Turbidity)\b', 
     re.I
 )
 
-# Lab Names
+# Lab Names (Expanded)
 RE_LABS = re.compile(
     r'\b(ALS\s+Environmental|TestAmerica|Eurofins|Pace\s+Analytical|Geochemical\s+Testing|'
-    r'Microbac|Fairway\s+Lab|Mahaffey\s+Lab|REIC|Summit\s+Environmental)\b', 
+    r'Microbac|Fairway\s+Lab|Mahaffey\s+Lab|REIC|Summit\s+Environmental|'
+    r'American\s+Analytical|Lancaster\s+Labs|Paragon\s+Analytics|'
+    r'Moody\s+and\s+Associates|Wetzel\s+Laboratories|Microbac\s+Laboratories)\b', 
     re.I
 )
 
@@ -102,81 +96,9 @@ def calculate_triage_score(text):
     return score, matches
 
 
-# ---------------------------------------------------------------------------
-# HTML generation
-# ---------------------------------------------------------------------------
-
-table_styling = """<style>
-  body {
-    font-family: "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell,
-                 "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
-    font-size: 16px;
-    color: rgb(9, 66, 100);
-  }
-  table, th, td {
-    border-color: rgb(214, 239, 238);
-  }
-  th {
-    font-weight: 400;
-  }
-</style>"""
-
-
-def get_link(row):
-    rooturl = "https://storage.googleapis.com/fta-form26r-library/full-set/"
-    fn = row.filename.replace(' ', '%20')
-    pn = f'#page={row.page_number}'
-    url = f"""<a href={rooturl}{row.set_name}/{fn}{pn} target="_blank">Open PDF</a>"""
-    return url
-
-
-def make_triage_html(parquet_path, html_path):
-    """Reads the triage parquet and writes an interactive HTML table."""
-    init_notebook_mode(all_interactive=True, connected=True)
-
-    if not os.path.exists(parquet_path):
-        print(f"Error: Parquet file not found: {parquet_path}")
-        return
-
-    df = pd.read_parquet(parquet_path)
-    print(f"Loaded {len(df)} rows from {parquet_path}")
-
-    df['pdf_link'] = df.apply(lambda row: get_link(row), axis=1)
-    
-    # We'll take a subset if it's too large, but itables can handle a lot.
-    # Let's show all flagged but maybe limited to top 10k for performance?
-    # User asked for top 50% export but for HTML maybe show a manageable amount.
-    # Actually, let's just use the whole flagged set since itables is efficient.
-    
-    html = itables.to_html_datatable(
-        df[['pdf_link', 'triage_score', 'matched_terms', 'filename', 'page_number', 'set_name', 'text_snippet']].reset_index(drop=True),
-        connected=True,
-        pageLength=10,
-        display_logo_when_loading=False,
-        lengthMenu=[2, 5, 10, 50, 100],
-        buttons=['pageLength', 'copyHtml5', 'csvHtml5'],
-        columnControl=["order", ["orderAsc", "orderDesc", "search"]]
-    )
-
-    title = """
-    <div class="title-container">
-    <h2>Lab Report Triage Results</h2>
-    <h3>Heuristic scoring for high-probability Lab Report pages.</h3>
-    </div>
-"""
-
-    os.makedirs(os.path.dirname(html_path), exist_ok=True)
-    with open(html_path, 'w', encoding='utf-8') as f:
-        f.write(f"<html><head>{table_styling}</head><body>")
-        f.write(title + html)
-        f.write("</body></html>")
-    print(f"HTML written to {html_path}")
-
-
 def run_triage():
     if not os.path.exists(CORPUS_PATH):
         print(f"Error: Corpus not found at {CORPUS_PATH}")
-        print("Please run 'python src/build_pdf_corpus.py' first.")
         return
 
     print(f"Loading corpus from {CORPUS_PATH}...")
@@ -209,9 +131,6 @@ def run_triage():
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     triage_df[output_cols].to_parquet(OUTPUT_PATH, index=False)
     print(f"Results written to {OUTPUT_PATH}")
-
-    # Generate HTML
-    make_triage_html(OUTPUT_PATH, HTML_OUTPUT_PATH)
 
 if __name__ == "__main__":
     run_triage()

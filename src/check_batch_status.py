@@ -2,7 +2,7 @@
 """
 check_batch_status.py
 ---------------------
-Checks the status of the current Gemini batch job.
+Checks the status of the current Gemini batch job (Google AI OR Vertex AI).
 """
 
 import os
@@ -12,36 +12,55 @@ from google import genai
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-API_KEY = os.getenv("GoogleAI-API-key")
-JOB_FILE = "data/current_batch_job.txt"
+PROJECT_ID = "open-ff-catalog-1"
+LOCATION = "us-central1"
 
-if not API_KEY:
-    print("Error: Environment variable 'GoogleAI-API-key' not set.")
-    sys.exit(1)
-
-client = genai.Client(api_key=API_KEY)
+# We check for the V2 surgical job file first, then the legacy one
+JOB_FILES = [
+    "data/current_batch_job_surgical_v2.txt",
+    "data/current_batch_job.txt"
+]
 
 def check_status():
-    if not os.path.exists(JOB_FILE):
-        print(f"No job ID found in {JOB_FILE}")
+    job_id = None
+    active_file = None
+    
+    for jf in JOB_FILES:
+        if os.path.exists(jf):
+            with open(jf, "r") as f:
+                job_id = f.read().strip()
+                active_file = jf
+                break
+                
+    if not job_id:
+        print("No job ID found in any tracker files.")
         return
 
-    with open(JOB_FILE, "r") as f:
-        job_id = f.read().strip()
-
-    print(f"Checking status for job: {job_id}")
+    print(f"Checking status from {active_file}...")
+    print(f"Job ID: {job_id}")
 
     try:
+        # Determine if it's a Vertex ID or a Gemini AI ID
+        if "projects/" in job_id or "locations/" in job_id:
+            # Vertex AI
+            client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
+        else:
+            # Google AI (Flash Batch)
+            api_key = os.getenv("GoogleAI-API-key")
+            client = genai.Client(api_key=api_key)
+            
         job = client.batches.get(name=job_id)
         
-        print(f"\nState: {job.state}")
+        print(f"\nState: {job.state.name if hasattr(job.state, 'name') else job.state}")
         print(f"Created: {job.create_time}")
-        print(f"Updated: {job.update_time}")
+        
+        if hasattr(job, 'update_time'):
+            print(f"Updated: {job.update_time}")
         
         if job.state.name == "JOB_STATE_SUCCEEDED":
-            print(f"Output: {job.dest}")
+            print("Job complete! Run the harvester to download results.")
         elif job.state.name == "JOB_STATE_FAILED":
-            print(f"Error: {job.error}")
+            print(f"Error: {getattr(job, 'error', 'Unknown Error')}")
             
     except Exception as e:
         print(f"Error checking status: {e}")

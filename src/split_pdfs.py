@@ -81,8 +81,10 @@ def split_target_files(target_df):
                         "chunk_filename": chunk_filename,
                         "chunk_page": chunk_p_idx + 1, # 1-based index within the Micro-PDF
                         "original_page": original_p_num,
-                        "original_filename": fn
+                        "original_filename": fn,
+                        "set_name": sn
                     })
+
 
                 total_chunks_created += 1
                 

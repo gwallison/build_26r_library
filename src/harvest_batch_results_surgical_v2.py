@@ -102,7 +102,12 @@ def harvest_results():
                     current_job_prompt_tokens += usage.get('promptTokenCount', 0)
                     current_job_response_tokens += usage.get('candidatesTokenCount', 0)
 
-                    chunk_filename = data.get('id') # ID was the chunk filename
+                    # ID was the chunk filename, but might have ||| prefix
+                    chunk_filename_raw = data.get('id', '')
+                    if '|||' in chunk_filename_raw:
+                        chunk_filename = chunk_filename_raw.split('|||')[-1]
+                    else:
+                        chunk_filename = chunk_filename_raw
                     
                     if 'response' in data and 'candidates' in data['response']:
                         content = data['response']['candidates'][0]['content']['parts'][0]['text']
@@ -134,21 +139,47 @@ def harvest_results():
     # Ensure chunk_page is numeric
     df_res['chunk_page'] = pd.to_numeric(df_res['chunk_page'], errors='coerce')
     
+    # Check if set_name exists in chunk_map
+    map_cols = ['chunk_filename', 'chunk_page', 'original_page', 'original_filename']
+    if 'set_name' in chunk_map.columns:
+        map_cols.append('set_name')
+        
     df_merged = pd.merge(
         df_res, 
-        chunk_map, 
+        chunk_map[map_cols], 
         on=['chunk_filename', 'chunk_page'], 
-        how='left'
+        how='inner'
     )
+    
+    # If set_name was missing (from older splits), try to backfill it from F26R or Triage
+    if 'set_name' not in df_merged.columns:
+        print("  Warning: 'set_name' missing from chunk map. Attempting to backfill...")
+        triage = pd.read_parquet("data/output/lab_report_triage.parquet")[['set_name', 'filename']].drop_duplicates()
+        df_merged = pd.merge(df_merged, triage, left_on='original_filename', right_on='filename', how='left')
+        if 'filename' in df_merged.columns:
+             df_merged = df_merged.drop(columns=['filename'])
+
+
+    if len(df_merged) < len(df_res):
+        print(f"  Note: Filtered out {len(df_res) - len(df_merged)} results that didn't match the current page map (likely from previous test runs).")
+
 
     # 2. Attach Sample Metadata (Matrix, Dates) back to results
     if not df_samp.empty:
+        # Pre-de-duplicate sample metadata to prevent Cartesian products
+        # We sort so that rows with dates (non-null) bubble to the top, then drop duplicates
+        df_samp_clean = df_samp.sort_values(
+            by=['lab_sample_id', 'chunk_filename', 'received_date', 'collection_date'], 
+            ascending=[True, True, False, False]
+        ).drop_duplicates(subset=['lab_sample_id', 'chunk_filename'], keep='first')
+        
         df_merged = pd.merge(
             df_merged, 
-            df_samp[['lab_sample_id', 'chunk_filename', 'received_date', 'collection_date', 'matrix', 'is_poor_scan']],
+            df_samp_clean[['lab_sample_id', 'chunk_filename', 'received_date', 'collection_date', 'matrix', 'is_poor_scan']],
             on=['lab_sample_id', 'chunk_filename'],
             how='left'
         )
+
 
     # 3. Proximity Join with Form 26R Metadata
     print("Performing proximity join with Form 26R context...")
@@ -178,6 +209,14 @@ def harvest_results():
 
     # Save Results
     output_path = os.path.join(OUTPUT_DIR, "results_v2.parquet")
+    
+    # Final De-duplication
+    before_count = len(df_merged)
+    df_merged = df_merged.drop_duplicates()
+    after_count = len(df_merged)
+    if before_count > after_count:
+        print(f"  Removed {before_count - after_count} duplicate rows.")
+
     df_merged.to_parquet(output_path, index=False)
     print(f"Saved {len(df_merged)} results to {output_path}")
 
@@ -185,12 +224,15 @@ def harvest_results():
     if os.path.exists(PROCESSED_TRACKER_PATH):
         tracker = pd.read_parquet(PROCESSED_TRACKER_PATH)
     else:
-        tracker = pd.DataFrame(columns=['filename', 'status'])
+        tracker = pd.DataFrame(columns=['set_name', 'filename', 'status'])
     
-    finished_files = df_merged['original_filename'].dropna().unique()
-    new_entries = pd.DataFrame({'filename': finished_files, 'status': 'succeeded'})
+    # Get unique (set_name, filename) pairs from the successfully mapped results
+    # results_v2 uses 'original_filename' for the document name
+    finished_files = df_merged[['set_name', 'original_filename']].dropna().drop_duplicates()
+    finished_files.columns = ['set_name', 'filename']
+    finished_files['status'] = 'succeeded'
     
-    updated_tracker = pd.concat([tracker, new_entries]).drop_duplicates(subset=['filename'], keep='last')
+    updated_tracker = pd.concat([tracker, finished_files]).drop_duplicates(subset=['set_name', 'filename'], keep='last')
     updated_tracker.to_parquet(PROCESSED_TRACKER_PATH, index=False)
     print(f"Updated tracker: {len(updated_tracker)} files now marked as processed.")
 
