@@ -9,16 +9,19 @@ Metadata association is handled post-harvest via chunk_map.parquet.
 
 import os
 import json
+import sys
 import pandas as pd
+import random
 
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_JSONL = os.path.join(PROJECT_ROOT, 'data', 'batch_input_surgical_v2.jsonl')
+OUTPUT_JSONL_SAMPLE = os.path.join(PROJECT_ROOT, 'data', 'batch_input_surgical_v2_sample.jsonl')
 CHUNKED_PDFS_DIR = os.path.join(PROJECT_ROOT, 'data', 'chunked_pdfs')
 
-GCS_CHUNKED_ROOT = "gs://fta-form26r-library/chunked-pdfs"
+GCS_CHUNKED_ROOT = "gs://fta-form26r-library/chunked-pdfs-v2"
 
 SYSTEM_PROMPT = """You are an expert environmental data chemist. Your task is to perform a surgical, comprehensive extraction of ALL analytical results from the attached laboratory reports.
 
@@ -28,6 +31,7 @@ SYSTEM_PROMPT = """You are an expert environmental data chemist. Your task is to
 3. **Preserve Inequalities:** Keep < and > in the 'r' field.
 4. **No Units/Qualifiers in 'r':** Put units in 'u' and flags (U, J, B) in 'q'.
 5. **IGNORE QC:** Skip any results labeled as "Method Blank", "LCS", "Surrogate", or found under a "Quality Control Data" header.
+6. **DATE FORMAT:** Extract dates as MM/DD/YYYY. Do NOT include timezone strings or repeat timezone offsets.
 """
 
 # Define a FLAT schema (Lean: No 'meta' block)
@@ -70,10 +74,37 @@ FLAT_SCHEMA_LEAN = {
     "required": ["samples", "results"]
 }
 
-def prepare_batch():
+def prepare_batch(sample_fraction=None, skip_processed=True):
     # Build requests based on the micro-PDFs present in the chunked directory
-    chunked_files = [f for f in os.listdir(CHUNKED_PDFS_DIR) if f.endswith(".pdf")]
+    chunk_map_path = os.path.join(PROJECT_ROOT, 'data', 'output', 'chunk_map.parquet')
+    if not os.path.exists(chunk_map_path):
+        print(f"Error: {chunk_map_path} not found.")
+        return
     
+    chunk_map = pd.read_parquet(chunk_map_path)
+    
+    if skip_processed:
+        tracker_path = os.path.join(PROJECT_ROOT, 'data', 'output', 'processed_files.parquet')
+        if os.path.exists(tracker_path):
+            tracker = pd.read_parquet(tracker_path)
+            processed_originals = tracker['filename'].unique().tolist()
+            # Only include chunks whose original_filename is NOT in the processed list
+            unprocessed_chunks = chunk_map[~chunk_map['original_filename'].isin(processed_originals)]
+            chunked_files = unprocessed_chunks['chunk_filename'].unique().tolist()
+            print(f"Skipping {len(chunk_map['chunk_filename'].unique()) - len(chunked_files)} already processed chunks.")
+        else:
+            chunked_files = chunk_map['chunk_filename'].unique().tolist()
+    else:
+        chunked_files = chunk_map['chunk_filename'].unique().tolist()
+
+    if sample_fraction:
+        sample_size = int(len(chunked_files) * sample_fraction)
+        print(f"Sampling {sample_size} files ({sample_fraction*100}% of {len(chunked_files)} remaining)...")
+        chunked_files = random.sample(chunked_files, sample_size)
+        target_output = OUTPUT_JSONL_SAMPLE
+    else:
+        target_output = OUTPUT_JSONL
+
     requests = []
     print(f"Preparing lean surgical requests for {len(chunked_files)} micro-PDFs...")
 
@@ -103,13 +134,16 @@ def prepare_batch():
         requests.append(request_obj)
 
     print(f"Total requests created: {len(requests)}")
-    print(f"Writing requests to {OUTPUT_JSONL}...")
+    print(f"Writing requests to {target_output}...")
     
-    with open(OUTPUT_JSONL, 'w', encoding='utf-8') as f:
+    with open(target_output, 'w', encoding='utf-8') as f:
         for req in requests:
             f.write(json.dumps(req) + '\n')
             
     print("Done!")
+    return target_output
 
 if __name__ == "__main__":
-    prepare_batch()
+    is_sample = "--sample" in sys.argv
+    # For this 20% test, we use 0.20
+    prepare_batch(sample_fraction=0.20 if is_sample else None)

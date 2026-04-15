@@ -14,7 +14,7 @@ from google.genai import types
 # ---------------------------------------------------------------------------
 PROJECT_ID = "open-ff-catalog-1"
 LOCATION = "us-central1"
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-1.5-flash"
 
 INPUT_URI = "gs://fta-form26r-library/batch-inputs/batch_input_surgical_v1.jsonl"
 OUTPUT_URI = "gs://fta-form26r-library/batch-outputs-surgical/"
