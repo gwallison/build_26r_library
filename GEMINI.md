@@ -13,6 +13,7 @@ The goal is to build and optimize a "Surgical V2" data extraction pipeline to ef
 - **Project Organized:** Cleaned up `src/` directory. Legacy scripts moved to `src/legacy/` and tests moved to `src/tests/`.
 - **Documentation:** `README.md` created with usage instructions.
 - **V2 Pipeline:** Fully implemented and tested with 5% samples and a final full-run.
+- **Legacy 26R Pipeline:** Updated `src/legacy/extract_26r_full.py` to extract expanded contact information (Last Name, First Name, Phone, Email) from Section A of Form 26R and include them in the HTML search frontend.
 
 ## Post-Completion Notes
 The pipeline is now in a "Production-Ready" state for re-running on the full 26R corpus. 

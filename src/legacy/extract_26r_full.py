@@ -81,6 +81,27 @@ def parse_sections_a_and_b(page, current_form):
         if loc_clean:
             current_form["waste_location"] = loc_clean
 
+    # --- Contact Info ---
+    contact_match = re.search(r'Company Contact Last Name[\s\S]+?Suffix[\r\n\s]+(.*?)(?=Municipality|County|SECTION)', text_content, re.I | re.S)
+    if contact_match:
+        content = contact_match.group(1).replace('\n', ' ').strip()
+        parts = content.split()
+        if len(parts) >= 1:
+            current_form["contact_last_name"] = parts[0]
+        if len(parts) >= 2:
+            current_form["contact_first_name"] = parts[1]
+
+    email_phone_match = re.search(r'Contact Phone[\s\S]+?Email Address[\r\n\s]+(.*?)(?=Is the waste|SECTION)', text_content, re.I | re.S)
+    if email_phone_match:
+        content = email_phone_match.group(1).replace('\n', ' ').strip()
+        phone_m = re.search(r'(\d{3}-\d{3}-\d{4})', content)
+        if phone_m:
+            current_form["contact_phone"] = phone_m.group(1)
+        
+        email_m = re.search(r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', content)
+        if email_m:
+            current_form["contact_email"] = email_m.group(1)
+
     # --- Section B: Waste Description ---
     sec_b_match = re.search(r'SECTION B\. WASTE DESCRIPTION[\s\S]*', text_content, re.I)
     if sec_b_match:
@@ -147,6 +168,10 @@ def process_pdf_state_machine(filepath):
                     "page_number": page_num + 1,
                     "date_prepared": None,
                     "company_name": None,
+                    "contact_last_name": None,
+                    "contact_first_name": None,
+                    "contact_phone": None,
+                    "contact_email": None,
                     "waste_location": None,
                     "waste_code": None,
                     "waste_description": None,
@@ -242,6 +267,10 @@ def json_to_flat_parquet(json_filepath, dirname, parquet_filepath, save_parq=Tru
                 "error": error,
                 "date_prepared": form.get("date_prepared"),
                 "company_name": form.get("company_name"),
+                "contact_last_name": form.get("contact_last_name"),
+                "contact_first_name": form.get("contact_first_name"),
+                "contact_phone": form.get("contact_phone"),
+                "contact_email": form.get("contact_email"),
                 "waste_location": form.get("waste_location"),
                 "waste_code": form.get("waste_code"),
                 "waste_description": form.get("waste_description"),
@@ -379,7 +408,9 @@ def make_form26r_html(parquet_path, output_dir):
     out.volume_shipped = out.volume_shipped.map(lambda x: round_sig(x, 3))
 
     html = itables.to_html_datatable(
-        out[['pdf_link', 'page_number', 'company_name', 'waste_location', 'waste_code',
+        out[['pdf_link', 'page_number', 'company_name', 
+             'contact_last_name', 'contact_first_name', 'contact_phone', 'contact_email',
+             'waste_location', 'waste_code',
              'waste_description', 'facility_name', 'address',
              'volume_shipped', 'volume_unit', 'filename', 'set_name', 'date_prepared']].reset_index(drop=True),
         connected=True,
