@@ -23,3 +23,8 @@ class SurgicalResult(BaseModel):
 class SurgicalExtraction(BaseModel):
     samples: List[SurgicalSample] = Field(..., description="List of unique samples")
     results: List[SurgicalResult] = Field(..., description="List of all results")
+
+class CompanyExtraction(BaseModel):
+    c: Optional[str] = Field(None, description="Client/Ordering Company Name")
+    l: Optional[str] = Field(None, description="Analytical Lab Name")
+    conf: str = Field(..., description="Confidence: HIGH, LOW, or NONE")

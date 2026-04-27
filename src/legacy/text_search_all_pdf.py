@@ -170,7 +170,7 @@ def build_html(matches: list, search_text: str, output_dir: str) -> str:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    search_text = sys.argv[1] if len(sys.argv) > 1 else "testamerica"
+    search_text = sys.argv[1] if len(sys.argv) > 1 else "radium"
 
     print(f'Searching for: "{search_text}"')
 
