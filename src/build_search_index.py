@@ -7,7 +7,7 @@ def build_index(parquet_path, db_path):
     print(f"Opening {parquet_path}...")
     # Use pandas to read the parquet file. 
     # For very large files, we could use fastparquet or pyarrow directly to stream chunks.
-    df = pd.read_parquet(parquet_path, columns=['filename', 'page_number', 'text'])
+    df = pd.read_parquet(parquet_path, columns=['filename', 'page_number', 'text', 'set_name'])
     
     if os.path.exists(db_path):
         os.remove(db_path)
@@ -21,11 +21,12 @@ def build_index(parquet_path, db_path):
     cursor.execute("PRAGMA cache_size = 100000")
     
     # Create FTS5 virtual table
-    # page_number is UNINDEXED because we don't search BY page number, we just retrieve it.
+    # page_number and set_name are UNINDEXED because we don't search BY them, we just retrieve them.
     print("Creating FTS5 table...")
     cursor.execute("""
         CREATE VIRTUAL TABLE pages_idx USING fts5(
             filename,
+            set_name UNINDEXED,
             page_number UNINDEXED,
             text,
             tokenize = 'unicode61'
@@ -40,8 +41,8 @@ def build_index(parquet_path, db_path):
     for i in range(0, len(df), batch_size):
         batch = df.iloc[i:i+batch_size]
         cursor.executemany(
-            "INSERT INTO pages_idx (filename, page_number, text) VALUES (?, ?, ?)",
-            batch[['filename', 'page_number', 'text']].values.tolist()
+            "INSERT INTO pages_idx (filename, set_name, page_number, text) VALUES (?, ?, ?, ?)",
+            batch[['filename', 'set_name', 'page_number', 'text']].values.tolist()
         )
         conn.commit()
         elapsed = time.time() - start_time

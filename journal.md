@@ -38,3 +38,12 @@ The search index is **case-insensitive** by default (using the `unicode61` token
 - **Lessons:** 
     - Standard `unicode61` index is best for most searches and supports `*` prefixing.
     - `trigram` (fuzzy) index is powerful for internal typos but requires at least one exact 3-char match.
+
+---
+## Work Log: April 27, 2026 (Part 2)
+- **Task:** Improve search usability and handle high-volume output errors.
+- **Updates:**
+    - Added `set_name` column to both standard and fuzzy indexes for better context.
+    - Added `--count-only` flag to `src/search_corpus.py` for exhaustive counting without data transfer.
+    - Added `--csv` flag to `src/search_corpus.py` to save large result sets to disk, avoiding IOPub rate limits.
+    - Improved console output formatting with truncated columns and clear headers.

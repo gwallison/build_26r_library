@@ -5,7 +5,7 @@ import time
 
 def build_fuzzy_index(parquet_path, db_path):
     print(f"Opening {parquet_path} for fuzzy indexing...")
-    df = pd.read_parquet(parquet_path, columns=['filename', 'page_number', 'text'])
+    df = pd.read_parquet(parquet_path, columns=['filename', 'page_number', 'text', 'set_name'])
     
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -22,6 +22,7 @@ def build_fuzzy_index(parquet_path, db_path):
     cursor.execute("""
         CREATE VIRTUAL TABLE pages_fuzzy USING fts5(
             filename,
+            set_name UNINDEXED,
             page_number UNINDEXED,
             text,
             tokenize = 'trigram'
@@ -35,8 +36,8 @@ def build_fuzzy_index(parquet_path, db_path):
     for i in range(0, len(df), batch_size):
         batch = df.iloc[i:i+batch_size]
         cursor.executemany(
-            "INSERT INTO pages_fuzzy (filename, page_number, text) VALUES (?, ?, ?)",
-            batch[['filename', 'page_number', 'text']].values.tolist()
+            "INSERT INTO pages_fuzzy (filename, set_name, page_number, text) VALUES (?, ?, ?, ?)",
+            batch[['filename', 'set_name', 'page_number', 'text']].values.tolist()
         )
         conn.commit()
         elapsed = time.time() - start_time
