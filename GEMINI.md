@@ -13,6 +13,7 @@ The goal is to build and optimize a "Surgical V2" data extraction pipeline to ef
 - **Project Organized:** Cleaned up `src/` directory. Legacy scripts moved to `src/legacy/` and tests moved to `src/tests/`.
 - **Documentation:** `README.md` created with usage instructions; `journal.md` for daily activity logs.
 - **Search Index:** SQLite FTS5 database at `data/corpus/corpus_search.db` supporting keyword, boolean, proximity, and fuzzy (trigram) searches across the full corpus.
+- **Variant Extraction:** `src/get_variants.py` for high-speed extraction of OCR variants, single-word joined phrases, and on-page proximity phrases.
 - **V2 Pipeline:** Fully implemented and tested with 5% samples and a final full-run.
 - **Legacy 26R Pipeline:** Updated `src/legacy/extract_26r_full.py` to extract expanded contact information (Last Name, First Name, Phone, Email) from Section A of Form 26R and include them in the HTML search frontend.
 

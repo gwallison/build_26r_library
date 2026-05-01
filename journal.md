@@ -36,8 +36,22 @@ The search index is **case-insensitive** by default (using the `unicode61` token
     - `src/search_corpus.py`: Interactive CLI tool for complex queries (AND, NEAR, phrase, fuzzy).
     - `src/batch_search.py`: Tool for searching multiple terms and saving results to Parquet.
 - **Lessons:** 
-    - Standard `unicode61` index is best for most searches and supports `*` prefixing.
+    - standard `unicode61` index is best for most searches and supports `*` prefixing.
     - `trigram` (fuzzy) index is powerful for internal typos but requires at least one exact 3-char match.
+
+    ---
+    ## Work Log: April 30, 2026
+    - **Task:** Create a tool to find all fuzzy variants of a term or phrase in the corpus.
+    - **Solution:** Developed `src/get_variants.py` which leverages the FTS5 dictionary and fuzzy index.
+    - **Capabilities:**
+    - **Single Words:** Uses `fts5vocab` and `rapidfuzz` to find dictionary variants in ~0.05s.
+    - **Joined Phrases:** Detects phrases indexed as single words (e.g., "rangeresources").
+    - **Proximity Phrases:** Scans the fuzzy index for multi-word variants (e.g., "Range Resour").
+    - **CSV Output:** Exports structured data including match type, scores, and hit counts.
+    - **Lessons:**
+    - Querying the `fts5vocab` table is much faster for finding variants than scanning the entire corpus text.
+    - Combining word-level fuzzy matching with index-level proximity searches allows for robust phrase variant detection despite OCR errors.
+
 
 ---
 ## Work Log: April 27, 2026 (Part 2)
