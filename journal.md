@@ -48,9 +48,42 @@ The search index is **case-insensitive** by default (using the `unicode61` token
     - **Joined Phrases:** Detects phrases indexed as single words (e.g., "rangeresources").
     - **Proximity Phrases:** Scans the fuzzy index for multi-word variants (e.g., "Range Resour").
     - **CSV Output:** Exports structured data including match type, scores, and hit counts.
-    - **Lessons:**
+    - Lessons:
     - Querying the `fts5vocab` table is much faster for finding variants than scanning the entire corpus text.
     - Combining word-level fuzzy matching with index-level proximity searches allows for robust phrase variant detection despite OCR errors.
+
+    ---
+    ## Work Log: May 6, 2026
+    - **Task:** Exploratory analysis of corpus search results.
+    - **Solution:** Created `src/spike_search_corpus.ipynb` to prototype advanced search interactions and visualization.
+    - **Lessons:** 
+    - Visualizing snippets in a notebook is much more efficient for rapid triage than CLI output.
+    - Need a more permanent GUI for non-technical stakeholders to explore the 420,000 pages.
+
+    ---
+    ## Work Log: May 7, 2026
+    - **Task:** Refactor `src/search_corpus.py` for integration and usability.
+    - **Updates:**
+    - Added `verbose` flag to suppress output when called programmatically.
+    - Modified function to return hit counts, enabling integration into larger pipeline scripts.
+    - Standardized internal snippet highlighting across tools.
+
+    ---
+    ## Work Log: May 13, 2026
+    - **Task:** Build a permanent visual search interface and finalize V2 Pipeline documentation.
+    - **Solution:** 
+    - Developed `src/app_search.py` using **Streamlit**.
+    - **Features:** 
+        - Integrated "Variant Finder" in the sidebar for real-time OCR typo detection.
+        - Interactive results table with single-row selection.
+        - "Inspector" panel that shows the full page text with highlighted search terms.
+        - CSV download of search results for downstream analysis.
+    - Confirmed **Surgical V2 Pipeline** state: "Production-Ready" after successful 5% sample and final full-run.
+    - Updated `GEMINI.md` to reflect current project status and GCP environment requirements (`open-ff-catalog-1`).
+    - **Lessons:**
+    - Streamlit is extremely effective for building "human-in-the-loop" verification tools for large-scale data extraction.
+    - The "Inspector" pattern (Search -> Select -> Full Text) is critical for validating whether a page hit is actually relevant before committing to LLM extraction costs.
+
 
 
 ---

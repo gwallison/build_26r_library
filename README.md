@@ -36,6 +36,25 @@ The pipeline follows a "Sieve & Extract" architecture:
 
 ---
 
+## Search & Exploration
+The project includes a high-performance SQLite FTS5 search engine for the 420,000-page corpus.
+
+### Visual Search Studio
+Run the Streamlit app for an interactive "Inspector" interface:
+```bash
+streamlit run src/app_search.py
+```
+*   **Search:** Supports complex boolean (`AND`, `OR`, `NOT`) and proximity (`NEAR`) queries.
+*   **Variant Finder:** Detect OCR typos and variants in real-time.
+*   **Inspector:** View full page text with search term highlighting.
+
+### Search CLI
+*   `src/search_corpus.py`: Query the index from the command line. Use `--fuzzy` for trigram matching.
+*   `src/get_variants.py`: Find all OCR variants of a term/phrase in the corpus.
+*   `src/batch_search.py`: Run many searches at once and save results to Parquet.
+
+---
+
 ## Core Components
 *   `src/schemas_surgical.py`: Defines the "Lean" Pydantic models (`SurgicalSample`, `SurgicalResult`).
 *   `src/get_single_file_prompt.py`: Utility to view the exact prompt sent to the LLM.

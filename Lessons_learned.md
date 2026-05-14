@@ -63,3 +63,13 @@ To make the data usable, the output must be strictly formatted and traceable.
 - [ ] Configure Batch API using `ContextContent` for prompt reuse.
 - [ ] Define Pydantic schemas for all expected outputs.
 - [ ] Map metadata (filename/page) to every extracted row.
+
+## 7. Visual Exploration & Verification (Human-in-the-Loop)
+Massive datasets benefit from dedicated visual tools to bridge the gap between raw search results and full LLM extraction.
+
+* **The "Inspector" Pattern:** 
+    1. **Broad Search:** Use FTS5 or keyword search to find potential hits.
+    2. **Triage View:** Present hits in a dense, interactive table (e.g., Streamlit).
+    3. **The Inspector:** Allow users to select a row to view the **full page text** with highlighted hits.
+* **Cost Prevention:** Using a human-in-the-loop to verify the "Data Density" of a page before sending it to Gemini Flash/Pro can reduce costs by filtering out "noise" that simple keywords might miss (e.g., a term appearing in a footer vs. a data table).
+* **Rapid Prototyping:** Streamlit is the preferred tool for these verification interfaces due to its speed of development and native support for dataframes and markdown.

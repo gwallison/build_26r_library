@@ -3,7 +3,8 @@ import sys
 import argparse
 import os
 
-def search_corpus(query, db_path="data/corpus/corpus_search.db", limit=20, fuzzy=False, count_only=False, csv_output=None):
+def search_corpus(query, db_path="data/corpus/corpus_search.db", limit=20, fuzzy=False, count_only=False, csv_output=None,
+                  verbose=True):
     if not os.path.exists(db_path):
         print(f"Error: Database not found at {db_path}")
         return
@@ -16,13 +17,17 @@ def search_corpus(query, db_path="data/corpus/corpus_search.db", limit=20, fuzzy
     # 1. Handle Count Only
     if count_only:
         sql_count = f"SELECT count(*) FROM {table} WHERE text MATCH ?"
+        count = None
         try:
             count = cursor.execute(sql_count, (query,)).fetchone()[0]
-            print(f"Total hits for '{query}': {count:,}")
+            if verbose:
+                print(f"Total hits for '{query}': {count:,}")
         except sqlite3.OperationalError as e:
-            print(f"Search Error: {e}")
+            if verbose:
+                print(f"Search Error: {e}")
+            count='search error'
         conn.close()
-        return
+        return count
 
     # 2. Regular Search
     # snippet(table, column_index, start, end, ellipses, num_tokens)
@@ -48,7 +53,8 @@ def search_corpus(query, db_path="data/corpus/corpus_search.db", limit=20, fuzzy
                 writer = csv.writer(f)
                 writer.writerow(['filename', 'set_name', 'page_number', 'snippet'])
                 writer.writerows(results)
-            print(f"Saved {len(results)} results to {csv_output}")
+            if verbose:
+                print(f"Saved {len(results)} results to {csv_output}")
         else:
             print(f"Top {len(results)} results for: {query}\n")
             # header
