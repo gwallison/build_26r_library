@@ -384,12 +384,16 @@ table_styling = """<style>
 </style>"""
 
 
-def get_link(row):
+def get_pdf_url(row):
     rooturl = "https://storage.googleapis.com/fta-form26r-library/full-set/"
     fn = row.filename.replace(' ', '%20')
     pn = f'#page={row.page_number}'
-    url = f"""<a href={rooturl}{row.set_name}/{fn}{pn} target="_blank">Open PDF</a>"""
-    return url
+    return f"{rooturl}{row.set_name}/{fn}{pn}"
+
+
+def get_link(row):
+    url = get_pdf_url(row)
+    return f"""<a href={url} target="_blank">Open PDF</a>"""
 
 
 def make_form26r_html(parquet_path, output_dir):
@@ -404,6 +408,7 @@ def make_form26r_html(parquet_path, output_dir):
     print(f"Loaded {len(alldf)} rows from {parquet_path}")
 
     alldf['pdf_link'] = alldf.apply(lambda row: get_link(row), axis=1)
+    alldf['url'] = alldf.apply(lambda row: get_pdf_url(row), axis=1)
     out = alldf.copy()
     out.volume_shipped = out.volume_shipped.map(lambda x: round_sig(x, 3))
 
@@ -412,7 +417,7 @@ def make_form26r_html(parquet_path, output_dir):
              'contact_last_name', 'contact_first_name', 'contact_phone', 'contact_email',
              'waste_location', 'waste_code',
              'waste_description', 'facility_name', 'address',
-             'volume_shipped', 'volume_unit', 'filename', 'set_name', 'date_prepared']].reset_index(drop=True),
+             'volume_shipped', 'volume_unit', 'filename', 'set_name', 'date_prepared', 'url']].reset_index(drop=True),
         connected=True,
         pageLength=10,
         display_logo_when_loading=False,
