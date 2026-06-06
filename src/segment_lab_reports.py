@@ -190,8 +190,27 @@ def segment_corpus():
     df['triage_score'] = triage_scores
     df['matched_terms'] = matched_terms_list
 
+    # Identify contiguous blocks of detected_lab
+    df['is_lab'] = df['detected_lab'].str.startswith('Lab_', na=False)
+    df['block_change'] = (
+        (df['filename'] != df['filename'].shift()) |
+        (df['detected_lab'] != df['detected_lab'].shift())
+    )
+    df['block_id'] = df['block_change'].cumsum()
+
+    # Group by block_id to get start and end page numbers
+    block_ranges = df[df['is_lab']].groupby('block_id')['page_number'].agg(['min', 'max'])
+
+    # Map start and end back to the main DataFrame
+    df['lab_start_page'] = df['block_id'].map(block_ranges['min']).astype('Int64')
+    df['lab_end_page'] = df['block_id'].map(block_ranges['max']).astype('Int64')
+
     # Filter to only keep pages identified as being in a laboratory report
     lab_pages_df = df[df['detected_lab'].str.startswith('Lab_', na=False)].copy()
+    
+    # Drop temp helper columns
+    lab_pages_df = lab_pages_df.drop(columns=['is_lab', 'block_change', 'block_id'])
+
     print(f"\nSegmentation complete.")
     print(f"Total lab report pages isolated: {len(lab_pages_df)} out of {len(df)} pages ({len(lab_pages_df)/len(df)*100:.1f}%)")
     print("\nPage count by detected lab category:")

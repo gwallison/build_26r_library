@@ -127,14 +127,23 @@ if query:
             st.divider()
             st.subheader(f"Inspector: {selected_row['filename']} (Page {selected_row['page_number']})")
             
+            # PDF Link
+            pdf_url = f"https://storage.googleapis.com/fta-form26r-library/full-set/{selected_row['set_name']}/{selected_row['filename'].replace(' ', '%20')}#page={selected_row['page_number']}"
+            st.link_button("📂 Open Original PDF in New Tab", pdf_url)
+            
             # Fetch full text for the selected page
             conn = get_connection()
             table = "pages_fuzzy" if is_fuzzy else "pages_idx"
             full_text_sql = f"SELECT text FROM {table} WHERE filename = ? AND page_number = ?"
-            full_text = conn.execute(full_text_sql, (selected_row['filename'], selected_row['page_number'])).fetchone()[0]
+            row = conn.execute(full_text_sql, (selected_row['filename'], int(selected_row['page_number']))).fetchone()
             conn.close()
             
-            with st.expander("Show Full Page Text", expanded=True):
+            if row is None:
+                st.error(f"Could not retrieve full text for {selected_row['filename']} Page {selected_row['page_number']} from table '{table}'.")
+                st.stop()
+            full_text = row[0]
+            
+            with st.expander("📝 Show Full Page Text", expanded=True):
                 # Highlight the terms in the full text if possible (simple regex)
                 display_text = full_text
                 # Try to extract the search terms from the query for highlighting

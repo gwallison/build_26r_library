@@ -30,11 +30,18 @@ def build_lab_index():
     df = pd.read_parquet(PARQUET_PATH)
     print(f"Loaded {len(df)} lab report pages.")
 
-    if os.path.exists(DB_PATH):
-        print(f"Removing existing database at {DB_PATH}...")
-        os.remove(DB_PATH)
+    import tempfile
+    import shutil
 
-    conn = sqlite3.connect(DB_PATH)
+    # We build the database in a local temp file first to prevent Google Drive sync conflicts
+    temp_dir = tempfile.gettempdir()
+    temp_db_path = os.path.join(temp_dir, 'lab_report_corpus.db')
+
+    if os.path.exists(temp_db_path):
+        os.remove(temp_db_path)
+
+    print(f"Building database locally at {temp_db_path}...")
+    conn = sqlite3.connect(temp_db_path)
     cursor = conn.cursor()
 
     # Optimizations for bulk insert
@@ -51,6 +58,8 @@ def build_lab_index():
             page_number UNINDEXED,
             detected_lab UNINDEXED,
             triage_score UNINDEXED,
+            lab_start_page UNINDEXED,
+            lab_end_page UNINDEXED,
             text,
             tokenize = 'unicode61'
         );
@@ -65,6 +74,8 @@ def build_lab_index():
             page_number UNINDEXED,
             detected_lab UNINDEXED,
             triage_score UNINDEXED,
+            lab_start_page UNINDEXED,
+            lab_end_page UNINDEXED,
             text,
             tokenize = 'trigram'
         );
@@ -80,10 +91,10 @@ def build_lab_index():
         batch = df.iloc[i:i+batch_size]
         cursor.executemany(
             """
-            INSERT INTO pages_idx (filename, set_name, page_number, detected_lab, triage_score, text)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO pages_idx (filename, set_name, page_number, detected_lab, triage_score, lab_start_page, lab_end_page, text)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            batch[['filename', 'set_name', 'page_number', 'detected_lab', 'triage_score', 'text']].values.tolist()
+            batch[['filename', 'set_name', 'page_number', 'detected_lab', 'triage_score', 'lab_start_page', 'lab_end_page', 'text']].values.tolist()
         )
         conn.commit()
         elapsed = time.time() - start_time
@@ -95,10 +106,10 @@ def build_lab_index():
         batch = df.iloc[i:i+batch_size]
         cursor.executemany(
             """
-            INSERT INTO pages_fuzzy (filename, set_name, page_number, detected_lab, triage_score, text)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO pages_fuzzy (filename, set_name, page_number, detected_lab, triage_score, lab_start_page, lab_end_page, text)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            batch[['filename', 'set_name', 'page_number', 'detected_lab', 'triage_score', 'text']].values.tolist()
+            batch[['filename', 'set_name', 'page_number', 'detected_lab', 'triage_score', 'lab_start_page', 'lab_end_page', 'text']].values.tolist()
         )
         conn.commit()
         elapsed = time.time() - start_time
@@ -110,6 +121,12 @@ def build_lab_index():
     conn.commit()
     conn.close()
 
+    if os.path.exists(DB_PATH):
+        print(f"Removing existing database at {DB_PATH}...")
+        os.remove(DB_PATH)
+
+    print(f"Moving database to final destination: {DB_PATH}...")
+    shutil.move(temp_db_path, DB_PATH)
     print(f"Done! Lab report search database successfully built at {DB_PATH}")
 
 if __name__ == "__main__":

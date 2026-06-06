@@ -1,0 +1,7 @@
+query_term,match_type,variant,score,hits
+cnx gas,joined,cnxgas,100.0,
+cnx gas,joined,cnas,80.0,
+cnx gas,joined,xgas,80.0,
+cnx gas,proximity,CNX Gas,,81
+cnx gas,proximity,CNX GAS,,8
+cnx gas,proximity,Cnx Gas,,6

@@ -7,12 +7,25 @@ import re
 
 # --- Configuration ---
 DB_PATH = "data/corpus/lab_report_corpus.db"
+RESULTS_PATH = "data/output/batch_harvest_surgical_v2/results_v2.parquet"
 ST_TITLE = "Lab Report Search Studio"
 ST_ICON = "🧪"
 
 st.set_page_config(page_title=ST_TITLE, page_icon=ST_ICON, layout="wide")
 
 # --- Functions ---
+
+@st.cache_data
+def load_extracted_results():
+    if not os.path.exists(RESULTS_PATH):
+        return None
+    try:
+        return pd.read_parquet(RESULTS_PATH)
+    except Exception as e:
+        st.warning(f"Error loading extracted results: {e}")
+        return None
+
+results_df = load_extracted_results()
 
 def get_connection():
     return sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -21,10 +34,11 @@ def run_query(query, fuzzy=False, lab_filter="All", min_score=0, limit=100):
     conn = get_connection()
     table = "pages_fuzzy" if fuzzy else "pages_idx"
     
-    # base SQL query
+    # base SQL query - text is now column 7, snippet uses 7
     sql = f"""
     SELECT filename, set_name, page_number, detected_lab, triage_score, 
-           snippet({table}, 5, '***', '***', '...', 20) as snippet
+           lab_start_page, lab_end_page,
+           snippet({table}, 7, '***', '***', '...', 20) as snippet
     FROM {table}
     WHERE text MATCH ?
     """
@@ -52,6 +66,7 @@ def get_records_without_query(lab_filter="All", min_score=0, limit=100):
     conn = get_connection()
     sql = """
     SELECT filename, set_name, page_number, detected_lab, triage_score, 
+           lab_start_page, lab_end_page,
            substr(text, 1, 150) as snippet
     FROM pages_idx
     """
@@ -196,28 +211,247 @@ elif df is not None:
         st.divider()
         st.subheader(f"Inspector: {selected_row['filename']} | Page {selected_row['page_number']} | {selected_row['detected_lab']}")
         
-        # Fetch full text
-        conn = get_connection()
-        table = "pages_fuzzy" if is_fuzzy else "pages_idx"
-        full_text_sql = f"SELECT text FROM {table} WHERE filename = ? AND page_number = ?"
-        full_text = conn.execute(full_text_sql, (selected_row['filename'], selected_row['page_number'])).fetchone()[0]
-        conn.close()
+        # PDF Link
+        pdf_url = f"https://storage.googleapis.com/fta-form26r-library/full-set/{selected_row['set_name']}/{selected_row['filename'].replace(' ', '%20')}#page={selected_row['page_number']}"
+        st.link_button("📂 Open Original PDF in New Tab", pdf_url)
         
-        with st.expander("Show Full Page Text", expanded=True):
-            display_text = full_text
-            if query.strip():
-                # Highlight terms in the full page display
-                search_terms = [t.strip('"') for t in query.split() if len(t) > 2 and t.upper() not in ['AND', 'OR', 'NOT', 'NEAR']]
-                for term in search_terms:
-                    display_text = re.sub(f"({re.escape(term)})", r"**\1**", display_text, flags=re.IGNORECASE)
-            st.markdown(display_text)
+        # --- Extracted Gemini Results Section ---
+        if results_df is not None:
+            # Filter results for this PDF file
+            file_results = results_df[
+                (results_df['original_filename'] == selected_row['filename']) &
+                (results_df['set_name'] == selected_row['set_name'])
+            ]
             
-    # Download results button
+            if not file_results.empty:
+                st.write("")
+                st.markdown("### 🧪 Extracted Chemical Analytes (Gemini)")
+                
+                # Filter widgets side-by-side
+                col_filt1, col_filt2 = st.columns(2)
+                with col_filt1:
+                    unique_analytes = sorted(file_results['analyte'].dropna().astype(str).unique().tolist())
+                    selected_analytes = st.multiselect("Filter by Analyte:", options=unique_analytes)
+                with col_filt2:
+                    unique_matrices = sorted(file_results['matrix'].dropna().astype(str).unique().tolist())
+                    selected_matrices = st.multiselect("Filter by Matrix:", options=unique_matrices)
+                
+                # Base page and consecutive page frames before filters
+                page_results = file_results[file_results['original_page'] == int(selected_row['page_number'])]
+                
+                # Get pre-calculated consecutive page range from row metadata
+                start_page = selected_row.get('lab_start_page')
+                end_page = selected_row.get('lab_end_page')
+                if start_page is not None and end_page is not None and not pd.isna(start_page) and not pd.isna(end_page):
+                    consecutive_pages = list(range(int(start_page), int(end_page) + 1))
+                else:
+                    consecutive_pages = [int(selected_row['page_number'])]
+                
+                consec_results = file_results[file_results['original_page'].isin(consecutive_pages)]
+                
+                # Apply filters to all dataframes
+                if selected_analytes:
+                    page_results = page_results[page_results['analyte'].isin(selected_analytes)]
+                    consec_results = consec_results[consec_results['analyte'].isin(selected_analytes)]
+                    file_results = file_results[file_results['analyte'].isin(selected_analytes)]
+                if selected_matrices:
+                    page_results = page_results[page_results['matrix'].isin(selected_matrices)]
+                    consec_results = consec_results[consec_results['matrix'].isin(selected_matrices)]
+                    file_results = file_results[file_results['matrix'].isin(selected_matrices)]
+                
+                # Create three tabs
+                tab_page, tab_consec, tab_file = st.tabs([
+                    f"📄 Selected Page ({len(page_results)} analytes)", 
+                    f"🔗 Consecutive Pages {min(consecutive_pages)}-{max(consecutive_pages)} ({len(consec_results)} analytes)",
+                    f"📂 Entire PDF File ({len(file_results)} analytes)"
+                ])
+                
+                with tab_page:
+                    if not page_results.empty:
+                        st.dataframe(
+                            page_results[['lab_sample_id', 'analyte', 'result', 'units', 'reporting_limit', 'mdl', 'collection_date', 'matrix']],
+                            column_config={
+                                "lab_sample_id": "Lab Sample ID",
+                                "analyte": "Analyte",
+                                "result": "Result",
+                                "units": "Units",
+                                "reporting_limit": "Rep. Limit",
+                                "mdl": "MDL",
+                                "collection_date": "Coll. Date",
+                                "matrix": "Matrix"
+                            },
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                        page_csv = page_results.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="📥 Download Selected Page Analytes as CSV",
+                            data=page_csv,
+                            file_name=f"page_{selected_row['page_number']}_analytes.csv",
+                            mime='text/csv',
+                            key="dl_page"
+                        )
+                    else:
+                        st.info("No analytes extracted from this specific page by Gemini (or page was not sent to LLM).")
+                        
+                with tab_consec:
+                    if not consec_results.empty:
+                        st.dataframe(
+                            consec_results[['original_page', 'lab_sample_id', 'analyte', 'result', 'units', 'reporting_limit', 'mdl', 'collection_date', 'matrix']].sort_values(by='original_page'),
+                            column_config={
+                                "original_page": "Pg",
+                                "lab_sample_id": "Lab Sample ID",
+                                "analyte": "Analyte",
+                                "result": "Result",
+                                "units": "Units",
+                                "reporting_limit": "Rep. Limit",
+                                "mdl": "MDL",
+                                "collection_date": "Coll. Date",
+                                "matrix": "Matrix"
+                            },
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                        consec_csv = consec_results.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="📥 Download Consecutive Pages Analytes as CSV",
+                            data=consec_csv,
+                            file_name=f"consecutive_pages_{min(consecutive_pages)}_{max(consecutive_pages)}_analytes.csv",
+                            mime='text/csv',
+                            key="dl_consec"
+                        )
+                    else:
+                        st.info("No analytes extracted from these consecutive pages by Gemini.")
+                        
+                with tab_file:
+                    if not file_results.empty:
+                        st.dataframe(
+                            file_results[['original_page', 'lab_sample_id', 'analyte', 'result', 'units', 'reporting_limit', 'mdl', 'collection_date', 'matrix']].sort_values(by='original_page'),
+                            column_config={
+                                "original_page": "Pg",
+                                "lab_sample_id": "Lab Sample ID",
+                                "analyte": "Analyte",
+                                "result": "Result",
+                                "units": "Units",
+                                "reporting_limit": "Rep. Limit",
+                                "mdl": "MDL",
+                                "collection_date": "Coll. Date",
+                                "matrix": "Matrix"
+                            },
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                        file_csv = file_results.to_csv(index=False).encode('utf-8')
+                        st.download_button(
+                            label="📥 Download Entire PDF Analytes as CSV",
+                            data=file_csv,
+                            file_name=f"pdf_{selected_row['filename']}_analytes.csv",
+                            mime='text/csv',
+                            key="dl_file"
+                        )
+                    else:
+                        st.info("No analytes found matching your current filter criteria.")
+            else:
+                st.info("No Gemini extraction results found for this PDF in the results database.")
+        else:
+            st.warning("Extracted results database (results_v2.parquet) not found at 'data/output/batch_harvest_surgical_v2/results_v2.parquet'.")
+            
+    # Download results section
     st.divider()
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button(
-        label="Download Results as CSV",
-        data=csv,
-        file_name=f"lab_search_results.csv",
-        mime='text/csv',
-    )
+    col_dl1, col_dl2 = st.columns(2)
+    
+    with col_dl1:
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="Download Table Results as CSV",
+            data=csv,
+            file_name="lab_search_results.csv",
+            mime='text/csv',
+            use_container_width=True,
+            key="dl_table_csv"
+        )
+        
+    with col_dl2:
+        if st.button("📦 Build & Zip Clipped Lab Report PDFs", use_container_width=True, key="btn_zip_pdfs"):
+            if df.empty:
+                st.warning("No search results found to clip.")
+            else:
+                import tempfile
+                import zipfile
+                import shutil
+                import fitz
+                
+                # Find unique lab report segments
+                unique_reports = df[['filename', 'set_name', 'lab_start_page', 'lab_end_page']].drop_duplicates()
+                unique_reports = unique_reports.dropna(subset=['lab_start_page', 'lab_end_page'])
+                
+                if unique_reports.empty:
+                    st.warning("No valid lab report segments found in search results to clip.")
+                else:
+                    # Setup temp dir
+                    temp_dir = tempfile.mkdtemp()
+                    zip_path = os.path.join(temp_dir, "clipped_lab_reports.zip")
+                    
+                    PDF_LIBRARY_ROOT = r"D:\PA_Form26r_PDFs\all_pdfs"
+                    
+                    clipped_count = 0
+                    missing_files = []
+                    
+                    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        for _, row in unique_reports.iterrows():
+                            fn = row['filename']
+                            sn = row['set_name']
+                            start = int(row['lab_start_page'])
+                            end = int(row['lab_end_page'])
+                            
+                            pdf_path = os.path.join(PDF_LIBRARY_ROOT, sn, fn)
+                            if not os.path.exists(pdf_path):
+                                pdf_path = os.path.join(PDF_LIBRARY_ROOT, fn)
+                                
+                            if not os.path.exists(pdf_path):
+                                missing_files.append(fn)
+                                continue
+                                
+                            try:
+                                doc = fitz.open(pdf_path)
+                                new_doc = fitz.open()
+                                
+                                # fitz is 0-based, pages is 1-based
+                                for p_idx in range(start - 1, end):
+                                    if 0 <= p_idx < len(doc):
+                                        new_doc.insert_pdf(doc, from_page=p_idx, to_page=p_idx)
+                                        
+                                clip_name = f"{os.path.splitext(fn)[0]}_pages_{start}_{end}.pdf"
+                                clip_temp_path = os.path.join(temp_dir, clip_name)
+                                new_doc.save(clip_temp_path)
+                                new_doc.close()
+                                doc.close()
+                                
+                                # Write to zip
+                                zip_file.write(clip_temp_path, clip_name)
+                                clipped_count += 1
+                            except Exception as ex:
+                                st.warning(f"Error clipping {fn}: {ex}")
+                                
+                    if clipped_count > 0:
+                        st.success(f"Successfully clipped {clipped_count} laboratory reports!")
+                        if missing_files:
+                            st.warning(f"Could not find {len(set(missing_files))} original PDFs on disk.")
+                            
+                        # Read the zip into memory for download_button
+                        with open(zip_path, "rb") as zf:
+                            zip_bytes = zf.read()
+                            
+                        st.download_button(
+                            label="📥 Download Clipped PDFs Zip Archive",
+                            data=zip_bytes,
+                            file_name="clipped_lab_reports.zip",
+                            mime="application/zip",
+                            use_container_width=True,
+                            key="download_clipped_zip"
+                        )
+                    else:
+                        st.error("No PDFs could be successfully clipped. Please verify that original PDFs exist in D:\\PA_Form26r_PDFs\\all_pdfs")
+                        
+                    # Clean up temp dir
+                    shutil.rmtree(temp_dir)

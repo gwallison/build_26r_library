@@ -9,10 +9,18 @@ def build_index(parquet_path, db_path):
     # For very large files, we could use fastparquet or pyarrow directly to stream chunks.
     df = pd.read_parquet(parquet_path, columns=['filename', 'page_number', 'text', 'set_name'])
     
-    if os.path.exists(db_path):
-        os.remove(db_path)
+    import tempfile
+    import shutil
+
+    # We build the database in a local temp file first to prevent Google Drive sync conflicts
+    temp_dir = tempfile.gettempdir()
+    temp_db_path = os.path.join(temp_dir, os.path.basename(db_path))
+
+    if os.path.exists(temp_db_path):
+        os.remove(temp_db_path)
     
-    conn = sqlite3.connect(db_path)
+    print(f"Building database locally at {temp_db_path}...")
+    conn = sqlite3.connect(temp_db_path)
     cursor = conn.cursor()
     
     # Optimizations for bulk insert
@@ -53,6 +61,12 @@ def build_index(parquet_path, db_path):
     conn.commit()
     conn.close()
     
+    if os.path.exists(db_path):
+        print(f"Removing existing database at {db_path}...")
+        os.remove(db_path)
+
+    print(f"Moving database to final destination: {db_path}...")
+    shutil.move(temp_db_path, db_path)
     print(f"Done! Index saved to {db_path}")
 
 if __name__ == "__main__":

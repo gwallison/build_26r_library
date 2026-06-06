@@ -7,7 +7,23 @@ def build_fuzzy_index(parquet_path, db_path):
     print(f"Opening {parquet_path} for fuzzy indexing...")
     df = pd.read_parquet(parquet_path, columns=['filename', 'page_number', 'text', 'set_name'])
     
-    conn = sqlite3.connect(db_path)
+    import tempfile
+    import shutil
+
+    # We modify the database in a local temp file first to prevent Google Drive sync conflicts
+    temp_dir = tempfile.gettempdir()
+    temp_db_path = os.path.join(temp_dir, os.path.basename(db_path))
+
+    if os.path.exists(temp_db_path):
+        os.remove(temp_db_path)
+
+    # Copy existing DB to temp if it exists, so we don't lose the standard index table
+    if os.path.exists(db_path):
+        print(f"Copying existing database from {db_path} to local temp {temp_db_path}...")
+        shutil.copy2(db_path, temp_db_path)
+    
+    print(f"Opening database locally at {temp_db_path}...")
+    conn = sqlite3.connect(temp_db_path)
     cursor = conn.cursor()
     
     # Optimizations for bulk insert
@@ -48,6 +64,12 @@ def build_fuzzy_index(parquet_path, db_path):
     conn.commit()
     conn.close()
     
+    if os.path.exists(db_path):
+        print(f"Removing existing database at {db_path}...")
+        os.remove(db_path)
+
+    print(f"Moving modified database to final destination: {db_path}...")
+    shutil.move(temp_db_path, db_path)
     print(f"Done! Fuzzy index added to {db_path}")
 
 if __name__ == "__main__":
