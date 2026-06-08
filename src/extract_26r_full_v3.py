@@ -68,17 +68,36 @@ def parse_sections_a_and_b(page, current_form):
     text_content = page.get_text()
 
     # --- Header & Section A ---
-    # Label is fuzzy: OCR produces 'Date 2 Prepared/Revised', 'Date Preparad/Revised',
-    # 'Date PreparediRevised', etc. Date value may use slashes, hyphens, or spelled-out month.
+    # Label variants seen in the wild:
+    #   'Date 2 Prepared/Revised'  (spurious digit)
+    #   'Date Preparad/Revised'    (OCR typo)
+    #   'Date PreparediRevised'    (slash read as 'i')
+    #   'Date Propared/Revised'    (OCR: 'o' instead of 'e')
+    # Date value formats seen:
+    #   12.28.2017 / 2.6.2018      (dot separator)
+    #   2-14-2017                  (hyphen separator)
+    #   02 February 2017           (day-first spelled-out month)
+    #   February 15, 2022          (month-first spelled-out with comma)
+    _months = (r'(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?'
+               r'|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)')
+    _label = r'Date\b[\s\S]{1,20}?[Pp]r[a-z]par[a-zA-Z]*[\s/iIl1]+[Rr]evis[a-zA-Z]*'
     date_match = re.search(
-        r'Date\b[\s\S]{1,20}?[Pp]repar[a-zA-Z]*[\s/iIl1]+[Rr]evis[a-zA-Z]*[\s\S]{1,200}?'
-        r'(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}'
-        r'|\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?'
-        r'|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{2,4})',
+        _label + r'[\s\S]{1,200}?'
+        r'(\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4}'
+        r'|\d{1,2}\s+' + _months + r'\s+\d{2,4}'
+        r'|' + _months + r'\s+\d{1,2},?\s+\d{4})',
         text_content, re.I
     )
     if date_match:
         current_form["date_prepared"] = date_match.group(1).strip()
+    else:
+        # Label found but date value is OCR-garbled: capture the raw string and flag it.
+        fallback_match = re.search(
+            _label + r'[\r\n\s]+(\S[^\r\n]*)',
+            text_content, re.I
+        )
+        if fallback_match:
+            current_form["date_prepared"] = f'**non-date** {fallback_match.group(1).strip()}'
 
     company_match = re.search(r'Company Name[\r\n\s]+([^\r\n]+)', text_content, re.I)
     if company_match:
