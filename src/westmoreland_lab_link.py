@@ -146,10 +146,25 @@ def link_lab_to_26r(matches_df, lab_df):
 # Names shorter than this get a needs_review flag (more likely false positives)
 _PATH_C_REVIEW_LEN = 5
 
+# Operators whose lab work should NOT be attributed to our (mostly EQT) sites.
+# These are O&G producers whose pads share names with EQT pads — a client_name
+# match here means the lab report belongs to a different company's well pad.
+_COMPETING_OPERATORS = re.compile(
+    r'chesapeake|cabot\s+(?:oil|appalachia)|coterra|range\s+resources|'
+    r'southwestern\s+(?:energy|prod)|energy\s+corp(?:oration)?\s+of\s+america|'
+    r'\bcnx\b|cogc|seneca\s+resources|penn\s+virginia|repsol|'
+    r'inflection\s+energy|shell\s+appalachia|chief\s+oil|epsilon\s+energy|'
+    r'atlas\s+energy|chevron\s+appalachia|dominion\s+transmission',
+    re.I,
+)
+
+
 def _build_site_patterns(sites):
-    """Return list of (site_name, compiled_regex) with word-boundary matching."""
+    """Return list of (site_name, compiled_regex) sorted longest-first.
+    Longest-first ensures multi-word names (e.g. 'Green Hill') match before
+    their component words (e.g. 'Hill') when scanning a project_name string."""
     patterns = []
-    for site in sites:
+    for site in sorted(sites, key=len, reverse=True):
         if not site or len(site) < 4:
             continue
         escaped = re.escape(site)
@@ -161,6 +176,7 @@ def _build_site_patterns(sites):
 def link_by_project_name(matches_df, lab_df, already_linked_files):
     """
     Path C: search project_name in lab rows NOT from already-linked files.
+    Excludes rows whose client_name clearly belongs to a competing operator.
     Returns rows with site, waste_location, waste_code_26r, match_path,
     needs_review columns appended.
     """
@@ -185,9 +201,17 @@ def link_by_project_name(matches_df, lab_df, already_linked_files):
 
     patterns = _build_site_patterns(list(site_meta.keys()))
 
-    # Restrict to lab rows outside the overlap set
+    # Restrict to lab rows outside the overlap set, dropping known competitor clients.
+    # Check both client_name and project_name — competitor names appear in both fields.
     lab_outside = lab_df[~lab_df['original_filename'].isin(already_linked_files)].copy()
-    print(f"  Lab rows in non-overlap files: {len(lab_outside):,}")
+    is_competitor = (
+        lab_outside['client_name'].fillna('').str.contains(_COMPETING_OPERATORS)
+        | lab_outside['project_name'].fillna('').str.contains(_COMPETING_OPERATORS)
+    )
+    n_dropped = is_competitor.sum()
+    lab_outside = lab_outside[~is_competitor]
+    print(f"  Lab rows in non-overlap files: {len(lab_outside) + n_dropped:,} "
+          f"({n_dropped:,} dropped — competing operator in client or project name)")
 
     # Build a project_name → matched site lookup (one pass over unique project_names)
     proj_to_site = {}
