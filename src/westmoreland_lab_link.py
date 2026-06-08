@@ -4,17 +4,16 @@ westmoreland_lab_link.py
 -------------------------
 First-pass linkage of lab report results to Westmoreland Landfill 26R sites.
 
-Linkage logic (within files present in both datasets):
-  Path A — f26r_location match: lab row's f26r_location matches a Westmoreland
-            waste_location in the same PDF. Highest confidence; works for both
-            single-pad files and large annual reports where the extractor already
-            identified the nearby 26R context.
-  Path B — page proximity: lab row has no matching f26r_location but the
-            original_page > some Westmoreland form page in the same file.
-            Linked to the nearest preceding Westmoreland form (largest form
-            page_number < original_page). Lower confidence.
-
-Both paths require: page_number (26R) < original_page (lab).
+Linkage logic:
+  Path A — f26r_location match (same-file): lab row's f26r_location matches a
+            Westmoreland waste_location in the same PDF. Highest confidence.
+  Path B — page proximity (same-file): no f26r_location match, but original_page
+            > a Westmoreland form page in the same file. Linked to the nearest
+            preceding form. Lower confidence.
+  Path C — project_name match (cross-file): for lab rows in files NOT in the
+            Westmoreland set, check whether project_name contains a Westmoreland
+            site name as a word-bounded substring (case-insensitive).
+            Names shorter than 5 chars are flagged needs_review=True.
 
 Outputs:
     data/output/westmoreland_lab_links.parquet   — full linked result rows
@@ -141,6 +140,79 @@ def link_lab_to_26r(matches_df, lab_df):
 
 
 # ---------------------------------------------------------------------------
+# Path C: project_name substring match for files outside the overlap set
+# ---------------------------------------------------------------------------
+
+# Names shorter than this get a needs_review flag (more likely false positives)
+_PATH_C_REVIEW_LEN = 5
+
+def _build_site_patterns(sites):
+    """Return list of (site_name, compiled_regex) with word-boundary matching."""
+    patterns = []
+    for site in sites:
+        if not site or len(site) < 4:
+            continue
+        escaped = re.escape(site)
+        pat = re.compile(r'(?<![A-Za-z])' + escaped + r'(?![A-Za-z])', re.I)
+        patterns.append((site, pat))
+    return patterns
+
+
+def link_by_project_name(matches_df, lab_df, already_linked_files):
+    """
+    Path C: search project_name in lab rows NOT from already-linked files.
+    Returns rows with site, waste_location, waste_code_26r, match_path,
+    needs_review columns appended.
+    """
+    # Canonical site → waste_location mapping (pick first waste_location per site)
+    _WELLPAD_SUFFIX2 = re.compile(r'\s*[-–]?\s*well\s*pad\b.*$', re.I)
+    def _canon(n):
+        if pd.isna(n): return ''
+        n = str(n).strip()
+        n = re.sub(r'\s{2,}.*$', '', n)
+        n = _WELLPAD_SUFFIX2.sub('', n).strip()
+        return re.sub(r'\s+', ' ', n)
+
+    # Build site → representative waste_location and waste_code
+    site_meta = {}
+    for _, row in matches_df.iterrows():
+        site = _canon(row['waste_location'])
+        if site and site not in site_meta:
+            site_meta[site] = {
+                'waste_location': row['waste_location'],
+                'waste_code_26r': row.get('waste_code', None),
+            }
+
+    patterns = _build_site_patterns(list(site_meta.keys()))
+
+    # Restrict to lab rows outside the overlap set
+    lab_outside = lab_df[~lab_df['original_filename'].isin(already_linked_files)].copy()
+    print(f"  Lab rows in non-overlap files: {len(lab_outside):,}")
+
+    # Build a project_name → matched site lookup (one pass over unique project_names)
+    proj_to_site = {}
+    proj_names = lab_outside['project_name'].dropna().unique()
+    for proj in proj_names:
+        for site, pat in patterns:
+            if pat.search(proj):
+                proj_to_site[proj] = site
+                break   # take first (longest names are listed first if sorted desc)
+
+    matched_proj = set(proj_to_site.keys())
+    print(f"  Unique project_names matched: {len(matched_proj)}")
+
+    hits = lab_outside[lab_outside['project_name'].isin(matched_proj)].copy()
+    hits['site']          = hits['project_name'].map(proj_to_site)
+    hits['waste_location'] = hits['site'].map(lambda s: site_meta.get(s, {}).get('waste_location', s))
+    hits['waste_code_26r'] = hits['site'].map(lambda s: site_meta.get(s, {}).get('waste_code_26r', None))
+    hits['match_path']    = 'project_name'
+    hits['needs_review']  = hits['site'].map(lambda s: len(s) < _PATH_C_REVIEW_LEN)
+    hits['page_number']   = None
+
+    return hits
+
+
+# ---------------------------------------------------------------------------
 # Summary HTML table (site × analyte)
 # ---------------------------------------------------------------------------
 
@@ -166,6 +238,7 @@ def make_summary_html(linked, out_path):
         return m.iloc[0] if len(m) > 0 else ''
 
     def agg(g):
+        nr_col = 'needs_review' if 'needs_review' in g.columns else None
         return pd.Series({
             'n_results':    len(g),
             'n_detect':     (g['result_flag'] != '<').sum(),
@@ -175,6 +248,7 @@ def make_summary_html(linked, out_path):
             'units':        first_mode(g['units']),
             'lab_names':    ', '.join(sorted(g['lab_name'].dropna().unique())),
             'match_paths':  ', '.join(sorted(g['match_path'].unique())),
+            'needs_review': bool(g[nr_col].any()) if nr_col else False,
             'waste_codes':  ', '.join(sorted(g['waste_code_26r'].dropna().astype(str).unique())),
             'collection_dates': ', '.join(sorted(g['collection_date'].dropna().unique())[:5]),
         })
@@ -195,15 +269,17 @@ def make_summary_html(linked, out_path):
         buttons=['pageLength', 'copyHtml5', 'csvHtml5', 'colvis'],
         column_filters="footer",
         footer=True,
+        maxBytes=0,
     )
 
     title = """
     <div style="padding:12px 0;">
       <h2 style="margin-bottom:4px;">Lab Results — Westmoreland Landfill Sites</h2>
       <p style="margin:0; color:#555;">
-        One row per site × analyte. Results linked to Westmoreland 26R forms via
-        f26r_location match (Path A) or nearest-preceding-form page proximity (Path B).
-        Only numeric results shown; &lt;MDL detections counted separately.
+        One row per site × analyte. Results linked via: Path A (f26r_location match,
+        same PDF), Path B (page proximity, same PDF), or Path C (project_name substring
+        match, cross-file). needs_review=True flags short site names prone to false
+        positives. Only numeric results shown; &lt;MDL detections counted separately.
       </p>
     </div>
 """
@@ -229,14 +305,23 @@ if __name__ == "__main__":
     lab = pd.read_parquet(LAB_PARQUET)
     print(f"  {len(lab):,} rows across {lab['original_filename'].nunique():,} files")
 
-    print("\nLinking lab results to Westmoreland 26R forms...")
-    linked = link_lab_to_26r(matches, lab)
-    print(f"\nLinked rows: {len(linked):,}")
+    print("\nPath A+B: linking same-file lab results...")
+    linked_ab = link_lab_to_26r(matches, lab)
+    linked_ab['needs_review'] = False
+
+    overlap_files = set(matches['filename'].unique()) & set(lab['original_filename'].unique())
+    print(f"\nPath C: project_name matching for non-overlap files...")
+    linked_c = link_by_project_name(matches, lab, overlap_files)
+
+    linked = pd.concat([linked_ab, linked_c], ignore_index=True)
+    print(f"\nTotal linked rows: {len(linked):,}")
 
     # Coverage report
     path_counts = linked['match_path'].value_counts()
     print(f"  Path A (f26r_location match):  {path_counts.get('f26r_location', 0):,}")
     print(f"  Path B (page proximity):        {path_counts.get('page_proximity', 0):,}")
+    print(f"  Path C (project_name match):    {path_counts.get('project_name', 0):,}")
+    print(f"    of which needs_review:         {linked[linked['match_path']=='project_name']['needs_review'].sum():,}")
 
     site_counts = linked['site'].value_counts()
     print(f"\nSites with lab results: {len(site_counts)}")

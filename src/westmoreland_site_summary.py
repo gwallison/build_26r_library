@@ -154,6 +154,7 @@ def make_html(site_df, out_path):
         buttons=['pageLength', 'copyHtml5', 'csvHtml5', 'colvis'],
         column_filters="footer",
         footer=True,
+        maxBytes=0,
     )
 
     title = """

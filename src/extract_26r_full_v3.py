@@ -456,7 +456,8 @@ def make_form26r_html(parquet_path, output_dir):
         lengthMenu=[2, 5, 10, 50, 100],
         buttons=['pageLength', 'copyHtml5', 'csvHtml5', 'colvis'],
         column_filters="footer",
-        footer=True
+        footer=True,
+        maxBytes=0,
     )
 
     title = """
