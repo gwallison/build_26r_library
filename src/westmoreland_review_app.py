@@ -201,32 +201,27 @@ with tab_reports:
             "Path C is a cross-file project_name match — verify carefully."
         )
 
-        def summarise_file(g):
+        records = []
+        for filename, g in site_lab.groupby("original_filename", sort=False):
             row0 = g.iloc[0]
-            return pd.Series({
+            records.append({
+                "filename":         filename,
                 "match_path":       row0["match_path"],
                 "needs_review":     bool(g["needs_review"].any()),
                 "client_name":      row0["client_name"] or "—",
                 "lab_name":         row0["lab_name"] or "—",
                 "project_name":     row0["project_name"] or "—",
-                "waste_location":   row0.get("waste_location", "—") or "—",
+                "waste_location":   row0.get("waste_location") or "—",
                 "collection_dates": ", ".join(
                     sorted(g["collection_date"].dropna().unique())[:6]
                 ),
                 "n_analytes":       g["analyte_norm"].nunique(),
                 "n_rows":           len(g),
                 "pdf_link":         gcs_url(
-                    row0["set_name"], row0["original_filename"], row0["original_page"]
+                    row0["set_name"], filename, row0["original_page"]
                 ),
             })
-
-        report_df = (
-            site_lab
-            .groupby("original_filename", sort=False)
-            .apply(summarise_file, include_groups=False)
-            .reset_index()
-            .rename(columns={"original_filename": "filename"})
-        )
+        report_df = pd.DataFrame(records)
 
         path_order = {"f26r_location": 0, "page_proximity": 1, "project_name": 2}
         report_df["_sort"] = (
