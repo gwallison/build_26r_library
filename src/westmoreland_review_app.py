@@ -281,10 +281,14 @@ with tab_analytes:
 
         st.caption(f"Showing {len(filtered):,} rows after filters.")
 
-        # Build PDF link per row
-        filtered["pdf_link"] = filtered.apply(
-            lambda r: gcs_url(r["set_name"], r["original_filename"], r["original_page"]),
-            axis=1,
+        # Build PDF link per row (vectorised — avoids pandas 3.0 apply/Arrow issues)
+        filtered["pdf_link"] = (
+            GCS_BASE
+            + filtered["set_name"].astype(str)
+            + "/"
+            + filtered["original_filename"].astype(str).str.replace(" ", "%20", regex=False)
+            + "#page="
+            + filtered["original_page"].astype(int).astype(str)
         )
 
         display_cols = [
